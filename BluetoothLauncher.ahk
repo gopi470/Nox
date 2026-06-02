@@ -1,6 +1,7 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 #NoTrayIcon ; Runs completely silently in the background
+SetTitleMatchMode "RegEx"
 
 TargetDevice := "CMF Buds 2a"
 TrackerPath := A_ScriptDir "\EarbudsTracker\run.bat"
@@ -30,8 +31,8 @@ CheckConnection() {
 
     if (connected) {
         DetectHiddenWindows(true)
-        ; Match exactly the Tkinter window class and title to prevent matching VS Code or Explorer windows
-        if !WinExist("EarbudsTracker ahk_class TkTopLevel") {
+        ; Match exactly the Tkinter or PyQt window class dynamically using RegEx
+        if !WinExist("EarbudsTracker ahk_class (Qt\d+QWindowIcon|TkTopLevel)") {
             try {
                 Run(TrackerPath, A_ScriptDir "\EarbudsTracker", "Hide")
             }

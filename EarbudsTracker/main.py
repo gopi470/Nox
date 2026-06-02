@@ -1,35 +1,29 @@
 """
 main.py
 ───────
-Application entry-point for EarbudsTracker.
+Application entry-point for EarbudsTracker (Native WinUI 3 edition).
 
 Thread layout
 ─────────────
-  Main thread     → Tkinter event loop (required by Tk)
+  Main thread     → PyQt5 event loop (required by Qt)
   BTMonitor       → daemon thread  (polls WMI/registry)
   AudioMonitor    → daemon thread  (polls WASAPI peak level)
-  TrayIcon        → daemon thread  (pystray event loop)
   LiveWrite timer → daemon timer threads (periodic DB flush)
 
 Startup:
   1. Init DB
   2. Start Tracker (spawns BT + Audio monitor threads)
-  3. Start TrayIcon (daemon thread)
+  3. Create PyQt5 Application
   4. Create TrackerWindow (hidden by default)
-  5. Enter Tk main loop
-
-Shutdown:
-  Tray "Quit" → calls _quit() on main thread via Tk.after
-              → stops Tracker (finalises open session)
-              → stops TrayIcon
-              → destroys Tk root
+  5. Create TrayIcon
+  6. Enter PyQt5 main loop
 """
 
 import sys
 import os
 import logging
 import threading
-import tkinter as tk
+from PyQt5.QtWidgets import QApplication
 
 # ── Logging setup ────────────────────────────────────────────────────────────
 LOG_DIR = os.path.join(os.getenv("APPDATA"), "EarbudsTracker")
@@ -45,9 +39,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main")
 
-# Suppress the harmless pycaw "COMError attempting to get property 28/29"
-# UserWarnings — these occur when pycaw reads optional BT device properties
-# that some endpoints don't support.  They do not affect functionality.
+# Suppress the harmless pycaw UserWarnings
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="pycaw")
 
@@ -58,8 +50,8 @@ from tray import TrayIcon
 
 DEVICE_NAME = "CMF Buds 2a"
 
-
 _single_instance_mutex = None
+
 
 def main():
     # Enforce single instance via named mutex on Windows
@@ -68,15 +60,21 @@ def main():
     mutex_name = "Global\\EarbudsTrackerSingleInstanceMutex"
     _single_instance_mutex = ctypes.windll.kernel32.CreateMutexW(None, True, mutex_name)
     last_error = ctypes.windll.kernel32.GetLastError()
-    
+
     if last_error == 183:  # ERROR_ALREADY_EXISTS
-        logger.info("Another instance of EarbudsTracker is already running. Exiting.")
-        ctypes.windll.user32.MessageBoxW(
-            0,
-            "EarbudsTracker is already running in the system tray.",
-            "EarbudsTracker",
-            0x40 | 0x0  # MB_ICONINFORMATION | MB_OK
-        )
+        logger.info("Another instance of EarbudsTracker is already running. Restoring window.")
+        try:
+            import ctypes
+            # Scan for all potential window classes to find the active running window
+            for class_name in ["Qt5152QWindowIcon", "Qt5QWindowIcon", "TkTopLevel"]:
+                hwnd = ctypes.windll.user32.FindWindowW(class_name, "EarbudsTracker")
+                if hwnd:
+                    # SW_RESTORE = 9, SW_SHOW = 5
+                    ctypes.windll.user32.ShowWindow(hwnd, 9)
+                    ctypes.windll.user32.SetForegroundWindow(hwnd)
+                    break
+        except Exception as e:
+            logger.debug("Failed to focus existing window: %s", e)
         sys.exit(0)
 
     logger.info("EarbudsTracker starting (device=%r)", DEVICE_NAME)
@@ -85,33 +83,38 @@ def main():
     tracker = Tracker(DEVICE_NAME)
     tracker.start()
 
-    # ── Tkinter root (hidden until user opens) ───────────────────────────────
-    ui = TrackerWindow(tracker, on_quit=lambda: None)   # on_quit patched below
-    ui.root.withdraw()   # start hidden in tray
+    # ── PyQt5 App setup ───────────────────────────────────────────────────────
+    from PyQt5.QtCore import Qt
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
+
+    # Create primary UI window
+    ui = TrackerWindow(tracker)
 
     # ── Tray icon ─────────────────────────────────────────────────────────────
     def show_window():
-        ui.root.after(0, ui.show)
+        ui.show_window()
 
     def quit_app():
         logger.info("Quit requested")
-        # Schedule shutdown on the Tk thread
-        ui.root.after(0, _shutdown)
+        _shutdown()
 
     def _shutdown():
         logger.info("Shutting down…")
         tracker.stop()
-        tray.stop()
-        ui.root.destroy()
+        tray.hide()
+        app.quit()
 
-    tray = TrayIcon(on_open=show_window, on_quit=quit_app, tracker=tracker)
-    tray.start()
+    tray = TrayIcon(ui, on_open=show_window, on_quit=quit_app, tracker=tracker)
+    tray.show()
 
-    logger.info("Running – icon in system tray.  Right-click tray icon to quit.")
+    logger.info("Running – icon in system tray. Right-click tray icon to quit.")
 
-    # ── Tk main loop (blocking) ───────────────────────────────────────────────
-    ui.run()
-    logger.info("Exited cleanly")
+    # ── PyQt5 event loop (blocking) ───────────────────────────────────────────
+    sys.exit(app.exec_())
 
 
 if __name__ == "__main__":

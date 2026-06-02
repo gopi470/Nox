@@ -1,7 +1,8 @@
 pycaw>=20241121
 comtypes>=1.4.0
-pystray>=0.19.5
 Pillow>=10.0.0
 pywin32>=306
 wmi>=1.5.1
 psutil>=5.9.0
+PyQt5>=5.15.2
+PyQt-Fluent-Widgets>=1.11.2

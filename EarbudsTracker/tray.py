@@ -1,14 +1,18 @@
 """
 tray.py
 ───────
-System-tray icon using pystray.
-Provides menu: Open, Quit.
-Icon is generated programmatically (no external image needed).
+System-tray icon using QSystemTrayIcon.
+Provides menu: Open Dashboard, Quit.
+Icon is generated programmatically using PIL.
 """
 
-import threading
+from PyQt5.QtWidgets import QSystemTrayIcon, QMenu, QAction
+from PyQt5.QtGui import QIcon, QPixmap, QImage, QFont
+from PyQt5.QtCore import Qt
 from PIL import Image, ImageDraw
-import pystray
+import logging
+
+logger = logging.getLogger("tray")
 
 
 def _make_icon_image(connected: bool = False, playing: bool = False) -> Image.Image:
@@ -38,61 +42,64 @@ def _make_icon_image(connected: bool = False, playing: bool = False) -> Image.Im
     return img
 
 
-class TrayIcon:
-    def __init__(self, on_open, on_quit, tracker):
-        self._on_open  = on_open
-        self._on_quit  = on_quit
-        self._tracker  = tracker
-        self._icon     = None
-        self._thread   = None
+def get_qicon(connected: bool = False, playing: bool = False) -> QIcon:
+    """Convert PIL generated icon image to QIcon."""
+    pil_img = _make_icon_image(connected, playing)
+    data = pil_img.tobytes("raw", "RGBA")
+    qimg = QImage(data, pil_img.size[0], pil_img.size[1], QImage.Format_RGBA8888)
+    pixmap = QPixmap.fromImage(qimg)
+    return QIcon(pixmap)
 
-    def start(self) -> None:
-        menu = pystray.Menu(
-            pystray.MenuItem("Open Dashboard", self._do_open, default=True),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Quit",           self._do_quit),
-        )
-        self._icon = pystray.Icon(
-            "EarbudsTracker",
-            _make_icon_image(),
-            "EarbudsTracker – CMF Buds 2a",
-            menu,
-        )
-        self._thread = threading.Thread(
-            target=self._icon.run, name="TrayIcon", daemon=True
-        )
-        self._thread.start()
 
-        # Hook tracker updates to refresh icon
-        _prev_notify = self._tracker.on_state_change
+class TrayIcon(QSystemTrayIcon):
+    def __init__(self, parent, on_open, on_quit, tracker):
+        super().__init__(parent)
+        self.on_open = on_open
+        self.on_quit = on_quit
+        self.tracker = tracker
+
+        # Context menu
+        self.menu = QMenu(parent)
+        
+        self.open_action = QAction("Open Dashboard", self)
+        self.open_action.triggered.connect(self.on_open)
+        self.open_action.setFont(QFont("Segoe UI", 9, QFont.Bold))
+        self.menu.addAction(self.open_action)
+        
+        self.menu.addSeparator()
+        
+        self.quit_action = QAction("Quit", self)
+        self.quit_action.triggered.connect(self.on_quit)
+        self.menu.addAction(self.quit_action)
+        
+        self.setContextMenu(self.menu)
+        self.activated.connect(self._on_activated)
+
+        # Initialise icon and tooltip
+        self.update_icon()
+
+        # Chain state change notifications
+        _prev_notify = self.tracker.on_state_change
         def _chained():
-            self._update_icon()
+            self.update_icon()
             if callable(_prev_notify):
                 _prev_notify()
-        self._tracker.on_state_change = _chained
+        self.tracker.on_state_change = _chained
 
-    def stop(self) -> None:
-        if self._icon:
-            self._icon.stop()
+    def _on_activated(self, reason):
+        if reason in (QSystemTrayIcon.DoubleClick, QSystemTrayIcon.Trigger):
+            self.on_open()
 
-    def _update_icon(self) -> None:
-        if self._icon is None:
-            return
-        snap = self._tracker.get_snapshot()
-        img  = _make_icon_image(snap["connected"], snap["playing"])
-        tip  = (
+    def update_icon(self) -> None:
+        snap = self.tracker.get_snapshot()
+        self.setIcon(get_qicon(snap["connected"], snap["playing"]))
+        
+        tip = (
             f"CMF Buds 2a\n"
             f"{'🟢 Playing' if snap['playing'] else ('🟡 Connected' if snap['connected'] else '🔴 Disconnected')}\n"
             f"Session: {_fmt(snap['sess_conn'])} / {_fmt(snap['sess_play'])} play"
         )
-        self._icon.icon = img
-        self._icon.title = tip
-
-    def _do_open(self, *_):
-        self._on_open()
-
-    def _do_quit(self, *_):
-        self._on_quit()
+        self.setToolTip(tip)
 
 
 def _fmt(s: float) -> str:
