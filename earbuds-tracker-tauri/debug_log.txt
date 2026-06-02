@@ -1,0 +1,458 @@
+[2026-06-02 18:47:58.852393800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:47:58.856551200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:01.860699400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:01.864334700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:04.866383 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:04.876374 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:07.879668800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:07.887805500 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:10.889079500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:10.895328700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:13.896996500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:13.899761800 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:16.901195500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:16.903571500 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:19.904910200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:19.907771700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:22.908988500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:22.911913600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:25.917472800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:25.920575600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:28.922272900 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:28.925176500 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:31.926530500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:31.929386900 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:34.933175800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:34.940290200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:37.941755300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:37.944465500 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:40.951527900 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:40.957164800 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:43.958807500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:43.961631400 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:46.966627700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:46.969524600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:49.970879 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:49.975592600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:52.976705800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:52.983623800 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:55.984927400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:55.987735400 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:48:58.989026500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:48:58.991934700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:01.997789300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:02.002550400 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:05.003618600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:05.007875600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:08.009702400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:08.013290500 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:11.014900700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:11.017884500 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:14.019232600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:14.021937900 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:17.023357600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:17.026254500 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:20.027737800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:20.030668900 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:23.032439500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:23.033804100 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:26.035358300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:26.038060300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:29.039185900 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:29.042595300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:32.043889500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:32.046751 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:35.048445500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:35.051634500 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:38.052987300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:38.055879200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:41.058353400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:41.063958100 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:44.065391600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:44.068025 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:47.075063100 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:47.079844 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:50.083521500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:50.087773700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:53.097469900 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:53.113368 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:56.114616900 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:56.120819100 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:49:59.122326100 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:49:59.125029300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:02.126118300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:02.128911100 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:05.132124600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:05.141735600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:08.147670300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:08.175377100 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:11.176263300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:11.179588800 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:14.183553100 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:14.186850200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:17.188152400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:17.192593700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:20.193580400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:20.196246400 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:23.201725800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:23.205936300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:26.207912700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:26.210233500 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:29.211329200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:29.214224300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:32.215637400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:32.217492500 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:35.218367600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:35.220550700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:38.221518200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:38.234832 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:41.236801600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:41.239687300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:44.242020600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:44.252954200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:47.254375100 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:47.257435800 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:50.265935700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:50.271751600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:53.273281300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:53.278165300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:56.279687 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:56.282402200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:50:59.283463700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:50:59.286057200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:02.293376100 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:02.296210100 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:05.304311700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:05.309219300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:08.315518800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:08.319603200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:11.321407800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:11.331808300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:14.333124800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:14.336049500 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:17.341630400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:17.344787200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:20.346577 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:20.349508 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:23.351978100 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:23.357457900 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:26.358662500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:26.361889300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:29.363276600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:29.372294500 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:32.373721300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:32.377516900 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:35.378853800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:35.382447800 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:38.383598500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:38.391909200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:41.393668 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:41.396431400 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:44.397667500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:44.399714700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:47.400704900 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:47.402027700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:50.403363400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:50.406105200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:53.407688300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:53.409617200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:56.410883 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:56.413655900 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:51:59.414619300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:51:59.416284200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:02.417494500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:02.420199700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:05.422376600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:05.425313700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:08.427255700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:08.433529500 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:11.434777300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:11.437468300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:14.439938400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:14.447437 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:17.448858900 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:17.452017300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:20.453221900 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:20.455901 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:23.456884100 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:23.459525800 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:26.461534500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:26.464521200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:29.466152100 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:29.468733800 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:32.470421300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:32.472875200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:35.473909700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:35.479581400 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:38.481749900 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:38.485091 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:41.486438800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:41.489191200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:44.492358500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:44.495180400 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:47.496404800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:47.499288200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:50.500286200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:50.504645 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:53.510002600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:53.512732800 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:56.513914500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:56.516157100 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:52:59.517296700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:52:59.525506 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:53:02.526961100 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:53:02.529821900 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:53:05.531196200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:53:05.535995900 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:53:08.540215600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:53:08.543889600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:53:11.545035500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:53:11.547925800 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:53:14.549092900 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:53:14.557903200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:53:17.559781100 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:53:17.562480600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:53:20.563773500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:53:20.571284700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:53:23.572340500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:53:23.576647 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:53:49.956297200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:53:49.961068400 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:53:52.966630200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:53:52.970510900 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:53:55.973543300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:53:55.977654900 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:53:58.981356200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:53:58.984304500 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:01.985638400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:01.990019700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:04.991484200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:04.997133200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:07.998602600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:08.001503100 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:11.003588200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:11.006689300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:14.008093500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:14.018277400 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:17.020136800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:17.023772600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:20.026680900 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:20.030463600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:23.031440700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:23.035024200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:26.036919500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:26.045990600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:29.048281700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:29.051184600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:32.053812400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:32.060904200 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:35.062250100 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:35.065289700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:38.066852200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:38.069842400 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:41.074713400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:41.076017300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:44.077296300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:44.079446700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:47.081589 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:47.084566600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:50.085504700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:50.093705300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:53.095369200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:53.098777600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:56.100119700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:56.105670600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:54:59.107496200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:54:59.110320700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:55:02.111633600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:02.114537 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:55:05.115916800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:05.121295300 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:55:08.122607400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:08.125556100 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:55:11.127720500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:11.136578600 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:55:14.137766600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:14.141035700 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:55:17.142280900 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:17.146204500 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:55:20.149319 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:20.152460800 +05:30] Strategy 1 (WASAPI) detected connection
+[2026-06-02 18:55:23.153324700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:23.156793500 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:55:26.158089600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:26.161194300 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:55:29.165489400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:29.168103700 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:55:32.169584200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:32.172607100 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:55:35.173653700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:35.176616100 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:55:38.182336400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:38.190086600 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:55:41.192459200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:41.203514200 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:55:44.204890500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:44.206639200 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:55:47.207835800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:47.211016 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=true
+[2026-06-02 18:55:50.214653 +05:30] --- check_connected start for target: cmf buds 2a ---
+[get_snapshot] connected=true playing=true
+[2026-06-02 18:55:50.217979200 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=true
+[get_snapshot] connected=true playing=true
+[get_snapshot] connected=true playing=true
+[2026-06-02 18:55:53.219487700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:53.222912400 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=true
+[get_snapshot] connected=true playing=true
+[get_snapshot] connected=true playing=true
+[2026-06-02 18:55:56.229453800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:56.233671700 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=true
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:55:59.235197600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:55:59.240108900 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:02.242716800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:02.245057 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:05.246135600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:05.249117300 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:08.250467 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:08.254568900 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:11.257803300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:11.260488200 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:14.261868500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:14.264669800 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:17.265968400 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:17.275764500 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:20.277396900 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:20.283355400 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:23.284838200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:23.290240800 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:26.291480600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:26.294349300 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:29.296797 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:29.299324700 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:32.306935300 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:32.319003 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:35.351297100 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:35.357397400 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:38.358812800 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:38.361065800 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:41.362206200 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:41.366299500 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:44.368978100 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:44.373224 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:47.374387600 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:47.376988 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:50.378327900 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:50.381002100 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:53.382104500 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:53.389043700 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:56.390286 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:56.395256800 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:56:59.396595 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:56:59.405076900 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:57:02.406158100 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:57:02.408802300 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[2026-06-02 18:57:05.409795700 +05:30] --- check_connected start for target: cmf buds 2a ---
+[2026-06-02 18:57:05.412570600 +05:30] Strategy 1 (WASAPI) detected connection
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false
+[get_snapshot] connected=true playing=false

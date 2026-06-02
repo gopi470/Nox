@@ -1,0 +1,39 @@
+{
+  "productName": "EarbudsTracker",
+  "version": "2.0.0",
+  "identifier": "com.earbudstracker.app",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "EarbudsTracker",
+        "width": 900,
+        "height": 620,
+        "minWidth": 800,
+        "minHeight": 540,
+        "resizable": true,
+        "visible": false,
+        "decorations": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
