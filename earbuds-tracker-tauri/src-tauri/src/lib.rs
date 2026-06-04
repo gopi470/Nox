@@ -3,6 +3,7 @@ mod db;
 mod bluetooth;
 mod audio;
 mod tracker;
+mod spp;
 
 use std::sync::Arc;
 use tauri::{Manager, State, AppHandle, Emitter};
@@ -26,6 +27,12 @@ fn get_sessions(state: State<TrackerState>) -> Vec<SessionRow> {
 #[tauri::command]
 fn set_device_name(name: String, state: State<TrackerState>) {
     state.set_device_name(&name);
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let dir = std::path::PathBuf::from(appdata).join("EarbudsTracker");
+        std::fs::create_dir_all(&dir).ok();
+        let path = dir.join("target_device.txt");
+        let _ = std::fs::write(path, name);
+    }
 }
 
 #[tauri::command]
@@ -42,6 +49,7 @@ fn get_daily_history() -> Vec<db::DailyStatsRow> {
 fn show_notification(title: String, body: String) {
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
         std::thread::spawn(move || {
             let cmd = format!(
                 "[void] [System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); \
@@ -54,7 +62,9 @@ fn show_notification(title: String, body: String) {
                 body.replace("'", "''"),
                 title.replace("'", "''")
             );
-            let _ = std::process::Command::new("powershell")
+            let mut command = std::process::Command::new("powershell");
+            command.creation_flags(0x08000000);
+            let _ = command
                 .args(["-NoProfile", "-NonInteractive", "-Command", &cmd])
                 .output();
         });
@@ -65,7 +75,10 @@ fn show_notification(title: String, body: String) {
 fn get_paired_devices() -> Vec<String> {
     #[cfg(target_os = "windows")]
     {
-        let output = std::process::Command::new("powershell")
+        use std::os::windows::process::CommandExt;
+        let mut command = std::process::Command::new("powershell");
+        command.creation_flags(0x08000000);
+        let output = command
             .args([
                 "-NoProfile", "-NonInteractive", "-Command",
                 "Get-PnpDevice -Class Bluetooth | Where-Object FriendlyName -notlike '*Enumerator*' | Where-Object FriendlyName -notlike '*Intel*' | Where-Object FriendlyName -notlike '*RFCOMM*' | Where-Object FriendlyName -notlike '*Microsoft*' | Where-Object FriendlyName -notlike '*Transport*' | Where-Object FriendlyName -notlike '*Adapter*' | Select-Object -ExpandProperty FriendlyName"
@@ -129,13 +142,43 @@ fn verify_windows_password(password: String) -> bool {
     }
 }
 
+#[tauri::command]
+fn get_device_battery(state: State<TrackerState>) -> Option<spp::BatteryInfo> {
+    #[cfg(debug_assertions)]
+    {
+        state.battery_cache.lock().clone()
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = state;
+        None
+    }
+}
+
+#[tauri::command]
+fn is_debug() -> bool {
+    cfg!(debug_assertions)
+}
+
 // ── App entry ─────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
 
-    let tracker = Arc::new(Tracker::new("CMF Buds 2a"));
+    let mut initial_device = "CMF Buds 2a".to_string();
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let path = std::path::PathBuf::from(appdata)
+            .join("EarbudsTracker")
+            .join("target_device.txt");
+        if let Ok(content) = std::fs::read_to_string(path) {
+            let trimmed = content.trim().to_string();
+            if !trimmed.is_empty() {
+                initial_device = trimmed;
+            }
+        }
+    }
+    let tracker = Arc::new(Tracker::new(&initial_device));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -221,7 +264,7 @@ pub fn run() {
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![get_snapshot, get_sessions, reset_all, get_daily_history, set_device_name, show_notification, get_paired_devices, verify_windows_password])
+        .invoke_handler(tauri::generate_handler![get_snapshot, get_sessions, reset_all, get_daily_history, set_device_name, show_notification, get_paired_devices, verify_windows_password, get_device_battery, is_debug])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

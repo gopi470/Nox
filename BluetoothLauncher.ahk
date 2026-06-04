@@ -1,40 +1,64 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
-#NoTrayIcon ; Runs completely silently in the background
-SetTitleMatchMode "RegEx"
+#NoTrayIcon
 
-TargetDevice := "CMF Buds 2a"
-TrackerPath := A_ScriptDir "\EarbudsTracker\run.bat"
 PollInterval := 3000
 
-; Add launcher to Windows Startup registry so it runs automatically at boot
+; Add launcher to Windows Startup registry
 RegWrite('"' A_ScriptFullPath '"', "REG_SZ", "HKCU\Software\Microsoft\Windows\CurrentVersion\Run", "EarbudsTrackerLauncher")
 
 SetTimer(CheckConnection, PollInterval)
 
 CheckConnection() {
-    global TargetDevice, TrackerPath
-    
-    connected := false
+    TargetDevice := "CMF Buds 2a"
     try {
-        wmi := ComObjGet("winmgmts:")
-        query := "SELECT Name, DeviceID, ConfigManagerErrorCode FROM Win32_PnPEntity WHERE DeviceID LIKE 'BTHENUM%'"
-        for dev in wmi.ExecQuery(query) {
-            if InStr(dev.Name, TargetDevice) && dev.ConfigManagerErrorCode = 0 {
-                connected := true
-                break
-            }
+        appdata := EnvGet("APPDATA")
+        deviceFile := appdata "\EarbudsTracker\target_device.txt"
+        if FileExist(deviceFile) {
+            content := Trim(FileRead(deviceFile))
+            if (content != "")
+                TargetDevice := content
         }
-    } catch {
-        connected := false
     }
 
+    connected := false
+    try {
+        for subkey in ["Render", "Capture"] {
+            parentKey := "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\" subkey
+            loop reg, parentKey, "K" {
+                guidKey := A_LoopRegName
+                propertiesKey := parentKey "\" guidKey "\Properties"
+                deviceMatches := false
+                loop reg, propertiesKey, "V" {
+                    try {
+                        val := RegRead(propertiesKey, A_LoopRegName)
+                        if InStr(val, TargetDevice) {
+                            deviceMatches := true
+                            break
+                        }
+                    }
+                }
+                if (deviceMatches) {
+                    try {
+                        state := RegRead(parentKey "\" guidKey, "DeviceState")
+                        if (state = 1) {
+                            connected := true
+                            break 2
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    ; TEMP: Force debug build only
+    debugExe := A_ScriptDir "\earbuds-tracker-tauri\src-tauri\target\debug\earbuds-tracker.exe"
     if (connected) {
-        DetectHiddenWindows(true)
-        ; Match exactly the Tkinter or PyQt window class dynamically using RegEx
-        if !WinExist("EarbudsTracker ahk_class (Qt\d+QWindowIcon|TkTopLevel)") {
-            try {
-                Run(TrackerPath, A_ScriptDir "\EarbudsTracker", "Hide")
+        if !ProcessExist("earbuds-tracker.exe") {
+            if FileExist(debugExe) {
+                try {
+                    Run(debugExe, A_ScriptDir "\earbuds-tracker-tauri", "Hide")
+                }
             }
         }
     }

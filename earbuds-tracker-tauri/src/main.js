@@ -96,6 +96,20 @@ async function initDeviceNameDatalist() {
 
 initDeviceNameDatalist();
 
+// Check build mode (debug vs release) to show/hide debug tag
+async function checkBuildMode() {
+  try {
+    const debugMode = await invoke('is_debug');
+    const tag = document.getElementById('debug-tag');
+    if (tag) {
+      tag.style.display = debugMode ? 'inline-block' : 'none';
+    }
+  } catch (e) {
+    console.error('Failed to check build mode', e);
+  }
+}
+checkBuildMode();
+
 // Request permission early if enabled
 if (notificationsEnabled && Notification.permission === 'default') {
   Notification.requestPermission();
@@ -420,6 +434,17 @@ async function refreshSnapshot() {
 
   const { connected, playing, sess_conn, sess_play, today, week, month, lifetime } = snap;
 
+  // Fetch battery status if connected
+  let batteryInfo = null;
+  if (connected) {
+    try {
+      batteryInfo = await invoke('get_device_battery');
+    } catch (e) {
+      console.error('get_device_battery failed', e);
+    }
+  }
+  updateBatteryUI(batteryInfo);
+
   const totalTodayPlay = today.playback;
   const goalMet = totalTodayPlay >= (currentGoal * 3600);
 
@@ -683,7 +708,60 @@ function drawDailyChart(history) {
   });
 }
 
+function updateBatteryUI(batteryInfo) {
+  const card = document.getElementById('battery-card');
+  if (!card) return;
+
+  if (!batteryInfo) {
+    card.style.display = 'none';
+    return;
+  }
+
+  card.style.display = 'block';
+
+  const updateItem = (containerId, valId, val, charging) => {
+    const container = document.getElementById(containerId);
+    const valEl = document.getElementById(valId);
+    if (!container || !valEl) return;
+
+    if (val === null || val === undefined) {
+      valEl.textContent = '—';
+      container.classList.remove('charging');
+    } else {
+      valEl.textContent = `${val}%`;
+      if (charging) {
+        container.classList.add('charging');
+      } else {
+        container.classList.remove('charging');
+      }
+    }
+  };
+
+  updateItem('bat-left-container', 'bat-left-val', batteryInfo.left, batteryInfo.left_charging);
+  updateItem('bat-right-container', 'bat-right-val', batteryInfo.right, batteryInfo.right_charging);
+  updateItem('bat-case-container', 'bat-case-val', batteryInfo.case, batteryInfo.case_charging);
+}
+
 // ── History ───────────────────────────────────────────────────────────────────
+function fmtSessBattery(r) {
+  const hasConnect = r.bat_left_connect !== null || r.bat_right_connect !== null || r.bat_case_connect !== null;
+  const hasDisc = r.bat_left_disc !== null || r.bat_right_disc !== null || r.bat_case_disc !== null;
+  if (!hasConnect && !hasDisc) return '—';
+
+  const formatBud = (conn, disc) => {
+    if (conn === null && disc === null) return '—';
+    const connStr = conn !== null ? `${conn}%` : '—';
+    const discStr = disc !== null ? `${disc}%` : '—';
+    return `${connStr} → ${discStr}`;
+  };
+
+  return `<div class="mono" style="font-size:0.75rem;line-height:1.3;white-space:nowrap;">
+    L: ${formatBud(r.bat_left_connect, r.bat_left_disc)}<br/>
+    R: ${formatBud(r.bat_right_connect, r.bat_right_disc)}<br/>
+    C: ${formatBud(r.bat_case_connect, r.bat_case_disc)}
+  </div>`;
+}
+
 async function loadHistory() {
   let rows;
   try { rows = await invoke('get_sessions'); }
@@ -700,6 +778,7 @@ async function loadHistory() {
       <td>${end}</td>
       <td>${fmtH(r.connected_secs)}</td>
       <td style="color:var(--green)">${fmtH(r.playback_secs)}</td>
+      <td>${fmtSessBattery(r)}</td>
     `;
     tbody.appendChild(tr);
   });

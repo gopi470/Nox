@@ -215,6 +215,13 @@ html, body { height: 100%; background: var(--bg); color: var(--text); overflow: 
 .btn:hover { background: #2e2e34; border-color: #3a3a42; }
 .btn-danger { background: #3a1515; border-color: #5a2020; color: #ff8080; }
 .btn-danger:hover { background: #4a1818; border-color: var(--danger); }
+.btn-icon-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.btn-icon-label svg { flex-shrink: 0; }
 
 /* ── Settings cards ───────────────────────────────────────────────────────── */
 .settings-card {
@@ -410,3 +417,57 @@ input:checked + .slider:before {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Battery styles ──────────────────────────────────────────────────────── */
+.battery-levels {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.battery-item {
+  flex: 1;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.bat-lbl {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+}
+.bat-val {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+.battery-item.charging .bat-val {
+  color: var(--green);
+}
+.battery-item.charging::after {
+  content: "⚡";
+  font-size: 10px;
+  color: var(--green);
+  margin-top: 2px;
+}
+
+.debug-tag {
+  font-size: 9px;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+

@@ -42,6 +42,7 @@ pub struct Tracker {
     bt: Arc<BluetoothMonitor>,
     audio: Arc<AudioMonitor>,
     inner: Arc<Mutex<Inner>>,
+    pub battery_cache: Arc<Mutex<Option<crate::spp::BatteryInfo>>>,
     // Callback invoked on any state change (set by Tauri main)
     pub on_state_change: Arc<Mutex<Option<Box<dyn Fn() + Send + 'static>>>>,
 }
@@ -54,12 +55,17 @@ impl Tracker {
             bt: Arc::new(BluetoothMonitor::new(dev_name.clone())),
             audio: Arc::new(AudioMonitor::new(dev_name)),
             inner: Arc::new(Mutex::new(Inner { session: None })),
+            battery_cache: Arc::new(Mutex::new(None)),
             on_state_change: Arc::new(Mutex::new(None)),
         }
     }
 
     pub fn set_device_name(&self, new_name: &str) {
         *self.device_name.write() = new_name.to_string();
+    }
+
+    pub fn get_device_name(&self) -> String {
+        self.device_name.read().clone()
     }
 
     pub fn start(self: &Arc<Self>, app_handle: tauri::AppHandle) {
@@ -98,10 +104,12 @@ impl Tracker {
         let notify_conn = Arc::clone(&self.on_state_change);
         let inner_disc = Arc::clone(&self.inner);
         let notify_disc = Arc::clone(&self.on_state_change);
-        let dev_name_lock = Arc::clone(&self.device_name);
+        let dev_name_lock      = Arc::clone(&self.device_name);
+        let dev_name_lock_disc = Arc::clone(&self.device_name);
 
         let app_handle_conn = app_handle.clone();
         let app_handle_disc = app_handle.clone();
+        let tracker_conn = Arc::clone(self);
         let tracker_disc = Arc::clone(self);
 
         self.bt.start(
@@ -122,6 +130,38 @@ impl Tracker {
                 run_event_script("connect", &current_dev);
                 schedule_live_write(Arc::clone(&inner_conn));
 
+                // Start background battery polling loop
+                #[cfg(debug_assertions)]
+                {
+                    let dev_for_bat = current_dev.clone();
+                    let cache_clone = Arc::clone(&tracker_conn.battery_cache);
+                    let bt_clone = Arc::clone(&tracker_conn.bt);
+                    let on_change_clone = Arc::clone(&tracker_conn.on_state_change);
+                    std::thread::spawn(move || {
+                        // Wait a short bit after connection to let SPP settle
+                        std::thread::sleep(Duration::from_secs(2));
+                        let mut db_updated = false;
+                        while bt_clone.is_connected() {
+                            if let Some(bat) = crate::spp::read_battery(&dev_for_bat) {
+                                info!("SPP Battery Poll: L={:?} R={:?} C={:?}", bat.left, bat.right, bat.case);
+                                *cache_clone.lock() = Some(bat.clone());
+                                if !db_updated {
+                                    db::set_connect_battery(id, bat.left, bat.right, bat.case);
+                                    db_updated = true;
+                                }
+                                call_notify(&on_change_clone);
+                            }
+                            // Poll every 30 seconds
+                            for _ in 0..30 {
+                                if !bt_clone.is_connected() { break; }
+                                std::thread::sleep(Duration::from_secs(1));
+                            }
+                        }
+                        // Clear cache on disconnect
+                        *cache_clone.lock() = None;
+                    });
+                }
+
                 // Hide window when earbuds connect
                 use tauri::Manager;
                 if let Some(win) = app_handle_conn.get_webview_window("main") {
@@ -129,6 +169,17 @@ impl Tracker {
                 }
             },
             move || {
+                // Read battery at disconnect BEFORE finalising the session
+                #[cfg(debug_assertions)]
+                {
+                    let last_bat = tracker_disc.battery_cache.lock().clone();
+                    if let Some(bat) = last_bat {
+                        let g = inner_disc.lock();
+                        if let Some(sess) = g.session.as_ref() {
+                            db::set_disconnect_battery(sess.id, bat.left, bat.right, bat.case);
+                        }
+                    }
+                }
                 let mut g = inner_disc.lock();
                 finalise_session(&mut g);
                 call_notify(&notify_disc);
@@ -264,12 +315,24 @@ fn run_event_script(event_type: &str, _device: &str) {
                     ];
                     for ahk in &ahk_paths {
                         if Path::new(ahk).exists() {
-                            std::process::Command::new(ahk).arg(&path).spawn().ok();
+                            let mut cmd = std::process::Command::new(ahk);
+                            #[cfg(target_os = "windows")]
+                            {
+                                use std::os::windows::process::CommandExt;
+                                cmd.creation_flags(0x08000000);
+                            }
+                            cmd.arg(&path).spawn().ok();
                             return;
                         }
                     }
                 } else {
-                    std::process::Command::new("cmd").args(["/C", &path.to_string_lossy()]).spawn().ok();
+                    let mut cmd = std::process::Command::new("cmd");
+                    #[cfg(target_os = "windows")]
+                    {
+                        use std::os::windows::process::CommandExt;
+                        cmd.creation_flags(0x08000000);
+                    }
+                    cmd.args(["/C", &path.to_string_lossy()]).spawn().ok();
                 }
                 return;
             }

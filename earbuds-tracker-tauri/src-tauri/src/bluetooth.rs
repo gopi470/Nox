@@ -209,6 +209,7 @@ fn check_wasapi(target: &str) -> Option<bool> {
 
 #[cfg(target_os = "windows")]
 fn check_mmdevapi_present(target: &str) -> Option<bool> {
+    use std::os::windows::process::CommandExt;
     let cmd = format!(
         "Get-PnpDevice | \
          Where-Object {{ $_.InstanceId -like 'SWD\\MMDEVAPI*' -and \
@@ -216,7 +217,9 @@ fn check_mmdevapi_present(target: &str) -> Option<bool> {
                          $_.Present -eq $true }} | \
          Measure-Object | Select-Object -ExpandProperty Count"
     );
-    let output = std::process::Command::new("powershell")
+    let mut command = std::process::Command::new("powershell");
+    command.creation_flags(0x08000000);
+    let output = command
         .args(["-NoProfile", "-NonInteractive", "-Command", &cmd])
         .output()
         .ok()?;

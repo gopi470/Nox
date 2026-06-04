@@ -37,6 +37,19 @@ fn conn() -> &'static Mutex<Connection> {
              );",
         )
         .expect("DB init failed");
+        // ── Battery columns migration (safe on existing DBs) ────────────────
+        let migrations = [
+            "ALTER TABLE sessions ADD COLUMN bat_left_connect   INTEGER",
+            "ALTER TABLE sessions ADD COLUMN bat_right_connect  INTEGER",
+            "ALTER TABLE sessions ADD COLUMN bat_case_connect   INTEGER",
+            "ALTER TABLE sessions ADD COLUMN bat_left_disc      INTEGER",
+            "ALTER TABLE sessions ADD COLUMN bat_right_disc     INTEGER",
+            "ALTER TABLE sessions ADD COLUMN bat_case_disc      INTEGER",
+            "ALTER TABLE sessions ADD COLUMN firmware           TEXT",
+        ];
+        for sql in &migrations {
+            c.execute(sql, []).ok(); // silently ignored if column already exists
+        }
         Mutex::new(c)
     })
 }
@@ -64,6 +77,33 @@ pub fn close_session(id: i64, end: &NaiveDateTime, connected: f64, playback: f64
         params![end.format("%Y-%m-%dT%H:%M:%S").to_string(), connected, playback, id],
     )
     .ok();
+}
+
+/// Save battery levels captured at connection time.
+pub fn set_connect_battery(id: i64, left: Option<u8>, right: Option<u8>, case: Option<u8>) {
+    let db = conn().lock();
+    db.execute(
+        "UPDATE sessions SET bat_left_connect=?1, bat_right_connect=?2, bat_case_connect=?3 WHERE id=?4",
+        params![left.map(|v| v as i64), right.map(|v| v as i64), case.map(|v| v as i64), id],
+    ).ok();
+}
+
+/// Save battery levels captured at disconnection time.
+pub fn set_disconnect_battery(id: i64, left: Option<u8>, right: Option<u8>, case: Option<u8>) {
+    let db = conn().lock();
+    db.execute(
+        "UPDATE sessions SET bat_left_disc=?1, bat_right_disc=?2, bat_case_disc=?3 WHERE id=?4",
+        params![left.map(|v| v as i64), right.map(|v| v as i64), case.map(|v| v as i64), id],
+    ).ok();
+}
+
+/// Save firmware version string.
+pub fn set_firmware(id: i64, firmware: &str) {
+    let db = conn().lock();
+    db.execute(
+        "UPDATE sessions SET firmware=?1 WHERE id=?2",
+        params![firmware, id],
+    ).ok();
 }
 
 pub fn update_session_live(id: i64, connected: f64, playback: f64) {
@@ -126,13 +166,22 @@ pub struct SessionRow {
     pub session_end: String,
     pub connected_secs: f64,
     pub playback_secs: f64,
+    pub bat_left_connect:  Option<i64>,
+    pub bat_right_connect: Option<i64>,
+    pub bat_case_connect:  Option<i64>,
+    pub bat_left_disc:     Option<i64>,
+    pub bat_right_disc:    Option<i64>,
+    pub bat_case_disc:     Option<i64>,
+    pub firmware:          Option<String>,
 }
 
 pub fn get_recent_sessions(limit: usize) -> Vec<SessionRow> {
     let db = conn().lock();
     let mut stmt = db
         .prepare(
-            "SELECT id, session_start, COALESCE(session_end,''), connected_secs, playback_secs
+            "SELECT id, session_start, COALESCE(session_end,''), connected_secs, playback_secs,
+                    bat_left_connect, bat_right_connect, bat_case_connect,
+                    bat_left_disc, bat_right_disc, bat_case_disc, firmware
              FROM sessions ORDER BY id DESC LIMIT ?1",
         )
         .expect("prepare failed");
@@ -143,6 +192,13 @@ pub fn get_recent_sessions(limit: usize) -> Vec<SessionRow> {
             session_end: row.get(2)?,
             connected_secs: row.get(3)?,
             playback_secs: row.get(4)?,
+            bat_left_connect:  row.get(5)?,
+            bat_right_connect: row.get(6)?,
+            bat_case_connect:  row.get(7)?,
+            bat_left_disc:     row.get(8)?,
+            bat_right_disc:    row.get(9)?,
+            bat_case_disc:     row.get(10)?,
+            firmware:          row.get(11)?,
         })
     })
     .unwrap()
