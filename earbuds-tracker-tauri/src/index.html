@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>EarbudsTracker</title>
   <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 </head>
 <body>
   <div class="shell">
@@ -31,6 +32,15 @@
           </span>
           <span class="nav-label">Dashboard</span>
         </li>
+        <li class="nav-item" data-page="battery">
+          <span class="nav-icon">
+            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="7" width="16" height="10" rx="2" ry="2"/>
+              <line x1="22" y1="11" x2="22" y2="13"/>
+            </svg>
+          </span>
+          <span class="nav-label">Battery</span>
+        </li>
         <li class="nav-item" data-page="statistics">
           <span class="nav-icon">
             <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -49,6 +59,16 @@
             </svg>
           </span>
           <span class="nav-label">History</span>
+        </li>
+        <li class="nav-item" data-page="breakdown">
+          <span class="nav-icon">
+            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="4" rx="1"/>
+              <rect x="3" y="10" width="11" height="4" rx="1"/>
+              <rect x="3" y="17" width="7" height="4" rx="1"/>
+            </svg>
+          </span>
+          <span class="nav-label">Breakdown</span>
         </li>
         <li class="nav-item" data-page="settings">
           <span class="nav-icon">
@@ -90,24 +110,6 @@
                 <div class="status-desc" id="status-desc">Earbuds are not detected</div>
               </div>
             </div>
-            <!-- Battery Card -->
-            <div class="card battery-card" id="battery-card" style="display: none;">
-              <div class="time-label" style="margin-bottom: 8px;">EARBUDS BATTERY</div>
-              <div class="battery-levels">
-                <div class="battery-item" id="bat-left-container">
-                  <span class="bat-lbl">LEFT</span>
-                  <span class="bat-val mono" id="bat-left-val">—</span>
-                </div>
-                <div class="battery-item" id="bat-right-container">
-                  <span class="bat-lbl">RIGHT</span>
-                  <span class="bat-val mono" id="bat-right-val">—</span>
-                </div>
-                <div class="battery-item" id="bat-case-container">
-                  <span class="bat-lbl">CASE</span>
-                  <span class="bat-val mono" id="bat-case-val">—</span>
-                </div>
-              </div>
-            </div>
             <div class="card time-card">
               <div class="time-label">CONNECTION TIME</div>
               <div class="time-value mono" id="conn-time">00:00:00</div>
@@ -115,6 +117,121 @@
             <div class="card time-card">
               <div class="time-label green">PLAYBACK TIME</div>
               <div class="time-value mono green" id="play-time">00:00:00</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Battery Page ───────────────────────────────────────── -->
+      <section class="page" id="page-battery">
+        <div class="page-header">
+          <h1 class="page-title">Battery</h1>
+          <p class="page-sub">Real-time level monitoring and status diagnostics</p>
+        </div>
+        
+        <div class="battery-page-container">
+          <!-- Battery Card -->
+          <div class="card battery-card" id="battery-card">
+            <div class="battery-title-container">
+              <div class="battery-title-device" id="battery-title-device">BUDS 2a</div>
+              <div class="battery-status-sub" id="battery-status-sub">Disconnected</div>
+            </div>
+            <div class="battery-device-display">
+              <!-- Left Bud -->
+              <div class="battery-device-col" id="bat-left-container">
+                <img src="assets/donphan_black_left.webp" alt="Left Bud" class="battery-device-img" id="bat-left-img" />
+                <div class="battery-progress-track">
+                  <div class="battery-progress-fill" id="bat-left-progress"></div>
+                </div>
+                <div class="battery-device-info">
+                  <span class="battery-device-lbl">L</span>
+                  <span class="battery-device-val" id="bat-left-val">—</span>
+                </div>
+              </div>
+
+              <!-- Case -->
+              <div class="battery-device-col" id="bat-case-container">
+                <img src="assets/donphan_black_case.webp" alt="Case" class="battery-device-img case-img" id="bat-case-img" />
+                <div class="battery-progress-track" id="bat-case-track">
+                  <div class="battery-progress-fill" id="bat-case-progress"></div>
+                  <div class="battery-progress-fill-split" id="bat-case-split">
+                    <div class="split-line"></div>
+                    <svg class="bolt" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                    </svg>
+                    <div class="split-line"></div>
+                  </div>
+                </div>
+                <div class="battery-device-info">
+                  <span class="battery-device-lbl">C</span>
+                  <span class="battery-device-val" id="bat-case-val">—</span>
+                </div>
+              </div>
+
+              <!-- Right Bud -->
+              <div class="battery-device-col" id="bat-right-container">
+                <img src="assets/donphan_black_right.webp" alt="Right Bud" class="battery-device-img" id="bat-right-img" />
+                <div class="battery-progress-track">
+                  <div class="battery-progress-fill" id="bat-right-progress"></div>
+                </div>
+                <div class="battery-device-info">
+                  <span class="battery-device-lbl">R</span>
+                  <span class="battery-device-val" id="bat-right-val">—</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Battery Analytics Card -->
+          <div class="card battery-analytics-card" style="margin-top: 24px; padding: 24px;">
+            <div class="analytics-header">
+              <div class="analytics-title-group">
+                <h2 class="analytics-title" style="margin: 0; font-size: 1.1rem; font-weight: 600; color: #ffffff;">Battery Analytics</h2>
+                <p class="analytics-subtitle" style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-muted, #888888);">Historical drain tracking and patterns</p>
+              </div>
+              <div class="analytics-filters" style="display: flex; gap: 16px; margin-top: 16px; flex-wrap: wrap;">
+                <div class="filter-group" style="display: flex; flex-direction: column; gap: 4px;">
+                  <label for="graph-duration" style="font-size: 0.75rem; color: var(--text-muted, #888888); font-weight: 500;">Duration</label>
+                  <select id="graph-duration" class="filter-select">
+                    <option value="session">This Session</option>
+                    <option value="day">Today</option>
+                    <option value="week" selected>Week</option>
+                    <option value="month">Month</option>
+                  </select>
+                </div>
+                <div class="filter-group" style="display: flex; flex-direction: column; gap: 4px;">
+                  <label for="graph-item" style="font-size: 0.75rem; color: var(--text-muted, #888888); font-weight: 500;">Item</label>
+                  <select id="graph-item" class="filter-select">
+                    <option value="left">Left Bud</option>
+                    <option value="right">Right Bud</option>
+                    <option value="case">Case</option>
+                    <option value="avg">Average (L+R)</option>
+                    <option value="all" selected>All</option>
+                  </select>
+                </div>
+                <div class="filter-group" style="display: flex; flex-direction: column; gap: 4px;">
+                  <label for="graph-type" style="font-size: 0.75rem; color: var(--text-muted, #888888); font-weight: 500;">Chart Type</label>
+                  <select id="graph-type" class="filter-select">
+                    <option value="line" selected>Line Graph</option>
+                    <option value="area">Area Chart</option>
+                    <option value="bar">Bar Chart</option>
+                    <option value="pie">Pie Chart</option>
+                    <option value="donut">Donut Chart</option>
+                    <option value="radar">Radar Chart</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            
+            <div class="graph-wrapper" style="position: relative; margin-top: 20px; min-height: 280px; width: 100%;">
+              <div id="battery-graph-canvas"></div>
+              <div id="graph-empty-state" class="graph-empty-state" style="display: none; flex-direction: column; align-items: center; justify-content: center; min-height: 280px; text-align: center; color: var(--text-muted, #888888); gap: 12px;">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.4;">
+                  <path d="M3 3v18h18"/>
+                  <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
+                </svg>
+                <p style="margin: 0; font-size: 0.9rem;">No battery log data found for this range.</p>
+              </div>
             </div>
           </div>
         </div>
@@ -194,6 +311,53 @@
         </div>
       </section>
 
+      <!-- ── Breakdown Page ──────────────────────────────────── -->
+      <section class="page" id="page-breakdown">
+        <div class="page-header" style="margin-bottom:14px;">
+          <h1 class="page-title">Session Breakdown</h1>
+          <p class="page-sub">Detailed per-session audio usage analysis</p>
+        </div>
+
+        <!-- Top control bar -->
+        <div class="bd-topbar">
+          <!-- Row 1: Search + Sort -->
+          <div style="display:flex; gap:8px; align-items:center; width:100%;">
+            <!-- Search -->
+            <div style="position:relative; flex:1; min-width:0;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; left:9px; top:50%; transform:translateY(-50%); color:var(--muted); pointer-events:none;">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input type="search" id="bd-search" class="input-field" placeholder="Search…" style="padding-left:29px; width:100%;" />
+            </div>
+            <!-- Sort -->
+            <select id="bd-sort" class="input-field" style="flex-shrink:0; width:120px; font-size:11px;">
+              <option value="newest">↓ Newest</option>
+              <option value="oldest">↑ Oldest</option>
+              <option value="time-high">⏱ Longest</option>
+              <option value="time-low">⏱ Shortest</option>
+            </select>
+          </div>
+          <!-- Row 2: Session picker -->
+          <select id="bd-session-picker" class="input-field bd-session-picker" style="width:100%;">
+            <option value="">— Select a session —</option>
+          </select>
+        </div>
+
+        <!-- Detail panel (full width) -->
+        <div class="bd-detail" id="bd-detail">
+          <div class="bd-empty-state">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--border);margin-bottom:12px;">
+              <rect x="3" y="3" width="18" height="4" rx="1"/>
+              <rect x="3" y="10" width="11" height="4" rx="1"/>
+              <rect x="3" y="17" width="7" height="4" rx="1"/>
+            </svg>
+            <div style="color:var(--muted);font-size:13px;">Select a session to view its breakdown</div>
+          </div>
+        </div>
+
+      </section>
+
       <!-- ── Settings Page ──────────────────────────────────────── -->
       <section class="page" id="page-settings">
         <div class="page-header">
@@ -234,6 +398,24 @@
               <input type="checkbox" id="notification-toggle" checked />
               <span class="slider"></span>
             </label>
+          </div>
+        </div>
+        <div class="card settings-card">
+          <div class="settings-control-row">
+            <div>
+              <div class="set-title">Battery Polling Interval</div>
+              <div class="set-desc">How often the app queries battery levels from the earbuds.</div>
+            </div>
+            <select id="battery-interval-select" class="input-field" style="width: 180px;">
+              <option value="30">30 seconds</option>
+              <option value="60">1 minute</option>
+              <option value="120">2 minutes</option>
+              <option value="300">5 minutes</option>
+              <option value="600">10 minutes</option>
+              <option value="900">15 minutes</option>
+              <option value="1200">20 minutes</option>
+              <option value="1800">30 minutes</option>
+            </select>
           </div>
         </div>
         <div class="card settings-card">

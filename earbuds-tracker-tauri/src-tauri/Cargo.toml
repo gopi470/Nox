@@ -40,6 +40,11 @@ windows = { version = "0.58", features = [
     "Win32_Devices_Properties",
     "Win32_Devices_FunctionDiscovery",
     "Win32_UI_Shell_PropertiesSystem",
+    "Devices_Bluetooth",
+    "Devices_Bluetooth_Rfcomm",
+    "Foundation_Collections",
+    "Networking_Sockets",
+    "Storage_Streams",
 ] }
 wmi = "0.14"
 

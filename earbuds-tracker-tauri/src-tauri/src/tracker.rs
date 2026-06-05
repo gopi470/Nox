@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use crate::bluetooth::BluetoothMonitor;
 use crate::audio::AudioMonitor;
+use crate::app_audio::AppAudioMonitor;
 use crate::db;
 
 const LIVE_WRITE_SECS: u64 = 30;
@@ -39,8 +40,10 @@ use parking_lot::RwLock;
 
 pub struct Tracker {
     device_name: Arc<RwLock<String>>,
+    battery_interval_secs: Arc<RwLock<u64>>,
     bt: Arc<BluetoothMonitor>,
     audio: Arc<AudioMonitor>,
+    app_audio: Arc<AppAudioMonitor>,
     inner: Arc<Mutex<Inner>>,
     pub battery_cache: Arc<Mutex<Option<crate::spp::BatteryInfo>>>,
     // Callback invoked on any state change (set by Tauri main)
@@ -48,12 +51,14 @@ pub struct Tracker {
 }
 
 impl Tracker {
-    pub fn new(device_name: &str) -> Self {
+    pub fn new(device_name: &str, battery_interval_secs: u64) -> Self {
         let dev_name = Arc::new(RwLock::new(device_name.to_string()));
         Self {
             device_name: dev_name.clone(),
+            battery_interval_secs: Arc::new(RwLock::new(battery_interval_secs)),
             bt: Arc::new(BluetoothMonitor::new(dev_name.clone())),
-            audio: Arc::new(AudioMonitor::new(dev_name)),
+            audio: Arc::new(AudioMonitor::new(dev_name.clone())),
+            app_audio: Arc::new(AppAudioMonitor::new(dev_name)),
             inner: Arc::new(Mutex::new(Inner { session: None })),
             battery_cache: Arc::new(Mutex::new(None)),
             on_state_change: Arc::new(Mutex::new(None)),
@@ -68,8 +73,29 @@ impl Tracker {
         self.device_name.read().clone()
     }
 
+    pub fn set_battery_interval_secs(&self, secs: u64) {
+        *self.battery_interval_secs.write() = secs;
+    }
+
+    pub fn get_battery_interval_secs(&self) -> u64 {
+        *self.battery_interval_secs.read()
+    }
+
     pub fn start(self: &Arc<Self>, app_handle: tauri::AppHandle) {
         db::init_db();
+
+        // ── Per-app audio tracking ────────────────────────────────────────────
+        {
+            let inner_for_sess = Arc::clone(&self.inner);
+            self.app_audio.start(
+                // get_session_id: returns active session id or None
+                move || inner_for_sess.lock().session.as_ref().map(|s| s.id),
+                // on_start: insert DB event row, return its id
+                |session_id, process_name| db::open_app_event(session_id, process_name.as_str()),
+                // on_stop: close the DB event row
+                |event_id, process_name| db::close_app_event(event_id, process_name.as_str()),
+            );
+        }
 
         // ── Audio callbacks ───────────────────────────────────────────────
         let inner_play = Arc::clone(&self.inner);
@@ -131,12 +157,12 @@ impl Tracker {
                 schedule_live_write(Arc::clone(&inner_conn));
 
                 // Start background battery polling loop
-                #[cfg(debug_assertions)]
                 {
                     let dev_for_bat = current_dev.clone();
                     let cache_clone = Arc::clone(&tracker_conn.battery_cache);
                     let bt_clone = Arc::clone(&tracker_conn.bt);
                     let on_change_clone = Arc::clone(&tracker_conn.on_state_change);
+                    let tracker_clone = Arc::clone(&tracker_conn);
                     std::thread::spawn(move || {
                         // Wait a short bit after connection to let SPP settle
                         std::thread::sleep(Duration::from_secs(2));
@@ -151,10 +177,11 @@ impl Tracker {
                                 }
                                 call_notify(&on_change_clone);
                             }
-                            // Poll every 30 seconds
-                            for _ in 0..30 {
-                                if !bt_clone.is_connected() { break; }
+                            // Poll according to configured interval
+                            let mut elapsed = 0;
+                            while bt_clone.is_connected() && elapsed < tracker_clone.get_battery_interval_secs() {
                                 std::thread::sleep(Duration::from_secs(1));
+                                elapsed += 1;
                             }
                         }
                         // Clear cache on disconnect
@@ -170,7 +197,6 @@ impl Tracker {
             },
             move || {
                 // Read battery at disconnect BEFORE finalising the session
-                #[cfg(debug_assertions)]
                 {
                     let last_bat = tracker_disc.battery_cache.lock().clone();
                     if let Some(bat) = last_bat {

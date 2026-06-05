@@ -2,6 +2,7 @@
 mod db;
 mod bluetooth;
 mod audio;
+mod app_audio;
 mod tracker;
 mod spp;
 
@@ -32,6 +33,22 @@ fn set_device_name(name: String, state: State<TrackerState>) {
         std::fs::create_dir_all(&dir).ok();
         let path = dir.join("target_device.txt");
         let _ = std::fs::write(path, name);
+    }
+}
+
+#[tauri::command]
+fn get_battery_interval(state: State<TrackerState>) -> u64 {
+    state.get_battery_interval_secs()
+}
+
+#[tauri::command]
+fn set_battery_interval(secs: u64, state: State<TrackerState>) {
+    state.set_battery_interval_secs(secs);
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let dir = std::path::PathBuf::from(appdata).join("EarbudsTracker");
+        std::fs::create_dir_all(&dir).ok();
+        let path = dir.join("battery_interval.txt");
+        let _ = std::fs::write(path, secs.to_string());
     }
 }
 
@@ -144,20 +161,72 @@ fn verify_windows_password(password: String) -> bool {
 
 #[tauri::command]
 fn get_device_battery(state: State<TrackerState>) -> Option<spp::BatteryInfo> {
-    #[cfg(debug_assertions)]
-    {
-        state.battery_cache.lock().clone()
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        let _ = state;
-        None
-    }
+    state.battery_cache.lock().clone()
 }
 
 #[tauri::command]
 fn is_debug() -> bool {
     cfg!(debug_assertions)
+}
+
+// ── Session Breakdown commands ──────────────────────────────────────────────
+
+#[tauri::command]
+fn get_sessions_for_breakdown() -> Vec<db::SessionBreakdownRow> {
+    db::get_sessions_for_breakdown(200)
+}
+
+#[tauri::command]
+fn get_session_breakdown(session_id: i64) -> Option<db::SessionBreakdown> {
+    db::get_session_breakdown(session_id)
+}
+
+#[tauri::command]
+fn set_session_note(session_id: i64, note: String) {
+    db::set_session_note(session_id, &note);
+}
+
+#[tauri::command]
+fn get_battery_graph_data(duration: String) -> Vec<db::BatteryGraphPoint> {
+    db::get_battery_graph_data(&duration)
+}
+
+/// Returns a JSON or CSV string of the full session breakdown for client-side download.
+#[tauri::command]
+fn export_session(session_id: i64, format: String) -> String {
+    let bd = match db::get_session_breakdown(session_id) {
+        Some(b) => b,
+        None => return String::new(),
+    };
+
+    if format.to_lowercase() == "csv" {
+        // CSV: two sections – session summary, then app totals
+        let mut out = String::new();
+        out.push_str("id,session_start,session_end,connected_secs,playback_secs,");
+        out.push_str("bat_left_connect,bat_right_connect,bat_case_connect,");
+        out.push_str("bat_left_disc,bat_right_disc,bat_case_disc,notes\n");
+        let s = &bd.session;
+        out.push_str(&format!(
+            "{},{},{},{},{},{},{},{},{},{},{},{}\n",
+            s.id, s.session_start, s.session_end,
+            s.connected_secs, s.playback_secs,
+            s.bat_left_connect.map(|v| v.to_string()).unwrap_or_default(),
+            s.bat_right_connect.map(|v| v.to_string()).unwrap_or_default(),
+            s.bat_case_connect.map(|v| v.to_string()).unwrap_or_default(),
+            s.bat_left_disc.map(|v| v.to_string()).unwrap_or_default(),
+            s.bat_right_disc.map(|v| v.to_string()).unwrap_or_default(),
+            s.bat_case_disc.map(|v| v.to_string()).unwrap_or_default(),
+            s.notes.as_deref().unwrap_or(""),
+        ));
+        out.push_str("\nprocess_name,total_secs,event_count\n");
+        for t in &bd.app_totals {
+            out.push_str(&format!("{},{},{}\n", t.process_name, t.total_secs, t.event_count));
+        }
+        out
+    } else {
+        // JSON
+        serde_json::to_string_pretty(&bd).unwrap_or_default()
+    }
 }
 
 // ── App entry ─────────────────────────────────────────────────────────────────
@@ -167,18 +236,24 @@ pub fn run() {
     env_logger::init();
 
     let mut initial_device = "CMF Buds 2a".to_string();
+    let mut initial_interval = 300; // 5 minutes default
     if let Ok(appdata) = std::env::var("APPDATA") {
-        let path = std::path::PathBuf::from(appdata)
-            .join("EarbudsTracker")
-            .join("target_device.txt");
-        if let Ok(content) = std::fs::read_to_string(path) {
+        let dir = std::path::PathBuf::from(appdata).join("EarbudsTracker");
+        let path_dev = dir.join("target_device.txt");
+        if let Ok(content) = std::fs::read_to_string(path_dev) {
             let trimmed = content.trim().to_string();
             if !trimmed.is_empty() {
                 initial_device = trimmed;
             }
         }
+        let path_int = dir.join("battery_interval.txt");
+        if let Ok(content) = std::fs::read_to_string(path_int) {
+            if let Ok(parsed) = content.trim().parse::<u64>() {
+                initial_interval = parsed;
+            }
+        }
     }
-    let tracker = Arc::new(Tracker::new(&initial_device));
+    let tracker = Arc::new(Tracker::new(&initial_device, initial_interval));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -264,7 +339,15 @@ pub fn run() {
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![get_snapshot, get_sessions, reset_all, get_daily_history, set_device_name, show_notification, get_paired_devices, verify_windows_password, get_device_battery, is_debug])
+        .invoke_handler(tauri::generate_handler![
+            get_snapshot, get_sessions, reset_all, get_daily_history,
+            set_device_name, show_notification, get_paired_devices,
+            verify_windows_password, get_device_battery, is_debug,
+            get_sessions_for_breakdown, get_session_breakdown,
+            set_session_note, export_session,
+            get_battery_interval, set_battery_interval,
+            get_battery_graph_data
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -419,41 +419,171 @@ input:checked + .slider:before {
 }
 
 /* ── Battery styles ──────────────────────────────────────────────────────── */
-.battery-levels {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
+@font-face {
+  font-family: 'NDot';
+  src: url('fonts/ndot_57.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
 }
-.battery-item {
-  flex: 1;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 12px;
+
+.battery-title-container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  margin-bottom: 22px;
 }
-.bat-lbl {
+
+.battery-title-device {
+  font-family: 'NDot', monospace;
+  font-size: 26px;
+  letter-spacing: 1px;
+  color: var(--text);
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.battery-status-sub {
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   color: var(--muted);
+  margin-top: 4px;
+}
+
+.battery-device-display {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.battery-device-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 90px;
+  transition: opacity 0.3s ease;
+}
+
+.battery-device-col.offline {
+  opacity: 0.45;
+}
+
+.battery-device-img {
+  height: 72px;
+  width: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.battery-device-col:hover .battery-device-img {
+  transform: translateY(-2px);
+}
+
+.battery-device-img.case-img {
+  height: 66px;
+  margin-top: 6px;
+}
+
+.battery-progress-track {
+  width: 90px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  position: relative;
+  border-radius: 1px;
+}
+
+.battery-progress-fill {
+  height: 100%;
+  background: #ffffff;
+  width: 0%;
+  border-radius: 1px;
+  transition: width 0.4s cubic-bezier(0.1, 0.8, 0.2, 1);
+}
+
+/* Split lines for case charging format: —— ⚡ —— */
+.battery-progress-fill-split {
+  display: none;
+  height: 100%;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.battery-progress-track.charging .battery-progress-fill {
+  display: none !important;
+}
+
+.battery-progress-track.charging .battery-progress-fill-split {
+  display: flex;
+}
+
+.split-line {
+  height: 100%;
+  flex: 1;
+  background: var(--green); /* green: #4ade80 */
+  border-radius: 1px;
+}
+
+.battery-progress-fill-split .bolt {
+  width: 11px;
+  height: 11px;
+  fill: #ffffff;
+  flex-shrink: 0;
+  display: block;
+  animation: bolt-glow 1.5s infinite ease-in-out;
+}
+
+@keyframes bolt-glow {
+  0%, 100% { filter: drop-shadow(0 0 1px rgba(255,255,255,0.3)); opacity: 0.8; }
+  50%       { filter: drop-shadow(0 0 5px rgba(255,255,255,0.95)); opacity: 1; }
+}
+
+.battery-device-info {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 15px;
+  font-weight: 500;
   letter-spacing: 0.5px;
 }
-.bat-val {
-  font-size: 16px;
+
+.battery-device-lbl {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.battery-device-val {
+  color: #ffffff;
   font-weight: 600;
-  color: var(--text);
 }
-.battery-item.charging .bat-val {
-  color: var(--green);
+
+.battery-device-col.charging .battery-progress-fill {
+  background: var(--green) !important;
 }
-.battery-item.charging::after {
-  content: "⚡";
-  font-size: 10px;
-  color: var(--green);
-  margin-top: 2px;
+
+.battery-page-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px 0 40px 0;
+  width: 100%;
+}
+
+.battery-page-container .battery-card {
+  width: 100%;
+  max-width: 500px;
+  padding: 32px 24px;
+  box-shadow: 0 12px 36px rgba(0,0,0,0.3);
+  border-radius: 12px;
+  background: var(--bg2);
 }
 
 .debug-tag {
@@ -469,5 +599,250 @@ input:checked + .slider:before {
   display: inline-block;
   vertical-align: middle;
   margin-left: 8px;
+}
+
+/* ── Session Breakdown Page ──────────────────────────────────────────────── */
+.bd-topbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.bd-session-picker, .bd-session-picker option {
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* Right detail panel */
+.bd-detail {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(100vh - 190px);
+}
+
+.bd-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Session info card */
+.bd-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.bd-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.bd-info-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.bd-info-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  font-family: "Cascadia Code", monospace;
+}
+.bd-info-value.green { color: var(--green); }
+
+/* Section title inside detail */
+.bd-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+/* App usage – card grid */
+.bd-app-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+.bd-app-row {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.15s;
+}
+.bd-app-row:hover { border-color: var(--accent); }
+.bd-app-row-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+.bd-app-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  word-break: break-word;
+  line-height: 1.35;
+  flex: 1;
+}
+.bd-app-dur {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  font-family: "Cascadia Code", monospace;
+  white-space: nowrap;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.bd-app-bar-track {
+  height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.bd-app-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+  background: linear-gradient(90deg, var(--accent), #8b5cf6);
+}
+.bd-app-bar-fill.top { background: linear-gradient(90deg, var(--green), #22d3ee); }
+.bd-app-rank {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* Battery drain canvas */
+.bd-battery-canvas-wrap {
+  position: relative;
+  height: 140px;
+  width: 100%;
+}
+.bd-battery-canvas-wrap canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* Notes */
+.bd-notes-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  min-height: 60px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.bd-notes-textarea:focus { border-color: var(--accent); }
+
+/* Export row */
+.bd-export-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Battery Analytics styles */
+.battery-analytics-card {
+  margin-top: 24px;
+  padding: 24px;
+}
+.analytics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+  margin-bottom: 8px;
+}
+.analytics-filters {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.filter-group label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+.filter-select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  min-width: 120px;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.filter-select:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.filter-select:focus {
+  border-color: var(--accent);
+  background: var(--bg3);
+}
+.graph-wrapper {
+  position: relative;
+  min-height: 320px;
+  width: 100%;
+}
+.graph-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  text-align: center;
+  color: var(--muted);
+  gap: 12px;
+}
+
+/* Responsive */
+@media (max-width: 850px) {
+  .breakdown-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .bd-session-list { max-height: 220px; }
+  .bd-app-list { grid-template-columns: 1fr 1fr; }
 }
 

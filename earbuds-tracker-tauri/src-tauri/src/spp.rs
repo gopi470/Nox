@@ -1,29 +1,38 @@
-// spp.rs – Nothing / CMF earbuds SPP protocol (reverse-engineered from ear-web)
+// spp.rs – Nothing / CMF earbuds SPP protocol via WinRT RFCOMM
+//
+// The CMF Buds 2a do NOT respond on the generic Windows serial COM port.
+// They listen on a proprietary RFCOMM service UUID:
+//   aeac4a03-dff5-498f-843a-34487cf133eb
+//
+// This implementation uses the Windows Runtime (WinRT) Bluetooth RFCOMM APIs
+// to connect directly to that UUID, send the battery request frame, and parse
+// the response.
 //
 // Protocol (from ear-web/res/js/bluetooth_socket.js):
 //   Frame:  [0x55, 0x60, 0x01, CMD_LO, CMD_HI, PAYLOAD_LEN, 0x00, OP_ID, ...payload, CRC_LO, CRC_HI]
 //   CRC:    CRC-16/IBM  (poly 0xA001, init 0xFFFF)
-//   Battery request command: 49159 (0xC007)
-//   Battery response triggered by command: 57345 (0xE001) or 16391 (0x4007)
+//   Battery request command:  0xC007 (49159)
+//   Battery response commands: 0xE001 (57345) or 0x4007 (16391)
 //   Battery response layout:
 //     byte[8]         = number of connected sub-devices
 //     byte[9 + i*2]   = device id  (0x02=left, 0x03=right, 0x04=case)
 //     byte[10 + i*2]  = battery    (bits 6-0 = level %, bit 7 = is_charging)
 
 use log::{info, warn};
-use std::io::{Read, Write};
-use std::time::Duration;
+
+// CMF / Nothing proprietary SPP UUID
+const SPP_UUID: &str = "aeac4a03-dff5-498f-843a-34487cf133eb";
 
 // ── Public battery result ────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct BatteryInfo {
-    pub left:            Option<u8>,
-    pub right:           Option<u8>,
-    pub case:            Option<u8>,
-    pub left_charging:   bool,
-    pub right_charging:  bool,
-    pub case_charging:   bool,
+    pub left:           Option<u8>,
+    pub right:          Option<u8>,
+    pub case:           Option<u8>,
+    pub left_charging:  bool,
+    pub right_charging: bool,
+    pub case_charging:  bool,
 }
 
 // ── CRC-16 / IBM ─────────────────────────────────────────────────────────────
@@ -53,67 +62,77 @@ fn build_battery_request() -> Vec<u8> {
     ];
     let crc = crc16(&frame);
     frame.push((crc & 0xFF) as u8);
-    frame.push((crc >> 8) as u8);
+    frame.push((crc >> 8)   as u8);
     frame
 }
 
 // ── Response parser ──────────────────────────────────────────────────────────
+// The device sends an ACK packet first, then the actual battery data packet.
+// We scan through accumulated bytes looking for a battery frame.
 
-fn parse_battery(data: &[u8]) -> Option<BatteryInfo> {
-    // Minimum: 8-byte header + 1 (num_devices) + at least 2 per device
-    if data.len() < 10 || data[0] != 0x55 { return None; }
-
-    // Log the command bytes to understand what the device sends
-    let cmd = u16::from_le_bytes([data[3], data[4]]);
-    info!("SPP: frame cmd=0x{:04X} ({}) len={}", cmd, cmd, data.len());
-
-    // Verify this is a battery response (commands 0xE001=57345 or 0x4007=16391)
-    if cmd != 57345 && cmd != 16391 {
-        return None;
-    }
-
-    let num_devices = data[8] as usize;
-    if data.len() < 9 + num_devices * 2 { return None; }
-
-    const BATTERY_MASK:  u8 = 0x7F;
-    const CHARGING_MASK: u8 = 0x80;
-
-    let mut info = BatteryInfo::default();
-    for i in 0..num_devices {
-        let device_id    = data[9  + i * 2];
-        let battery_byte = data[10 + i * 2];
-        let level    = battery_byte & BATTERY_MASK;
-        let charging = (battery_byte & CHARGING_MASK) != 0;
-        match device_id {
-            0x02 => { info.left  = Some(level); info.left_charging  = charging; }
-            0x03 => { info.right = Some(level); info.right_charging = charging; }
-            0x04 => { info.case  = Some(level); info.case_charging  = charging; }
-            _    => {}
+fn try_parse_battery(buf: &[u8]) -> Option<BatteryInfo> {
+    let mut i = 0;
+    while i < buf.len() {
+        if buf[i] != 0x55 {
+            i += 1;
+            continue;
         }
+        // Need at least 10 bytes to inspect header
+        if buf.len() - i < 10 {
+            break;
+        }
+        let frame = &buf[i..];
+        let cmd = u16::from_le_bytes([frame[3], frame[4]]);
+        let payload_len = frame[5] as usize;
+
+        info!("SPP: frame at offset {} cmd=0x{:04X} payload_len={}", i, cmd, payload_len);
+
+        // Battery response commands: 0xE001 (57345) or 0x4007 (16391)
+        if cmd != 57345 && cmd != 16391 {
+            i += 1; // not a battery frame — skip
+            continue;
+        }
+
+        // Ensure the full payload is present
+        let total_len = 8 + payload_len + 2; // header(8) + payload + crc(2)
+        if frame.len() < total_len.max(11) {
+            break; // need more data
+        }
+
+        let num_devices = frame[8] as usize;
+        if frame.len() < 9 + num_devices * 2 {
+            break;
+        }
+
+        let mut info = BatteryInfo::default();
+        for d in 0..num_devices {
+            let device_id    = frame[9  + d * 2];
+            let battery_byte = frame[10 + d * 2];
+            let level    = battery_byte & 0x7F;
+            let charging = (battery_byte & 0x80) != 0;
+            match device_id {
+                0x02 => { info.left  = Some(level); info.left_charging  = charging; }
+                0x03 => { info.right = Some(level); info.right_charging = charging; }
+                0x04 => { info.case  = Some(level); info.case_charging  = charging; }
+                _    => { warn!("SPP: unknown device_id 0x{:02X}", device_id); }
+            }
+        }
+        info!("SPP: battery parsed ✓ {:?}", info);
+        return Some(info);
     }
-    Some(info)
+    None
 }
 
-// ── COM port discovery ───────────────────────────────────────────────────────
-//
-// Nothing/CMF SPP devices register a virtual COM port under
-// "Ports (COM & LPT)" whose FriendlyName contains the device name
-// e.g. "CMF Buds 2a 'Dev B' (COM4)".
-// We query PnP via PowerShell, extract the COM number, and return it.
+// ── Device MAC discovery ─────────────────────────────────────────────────────
 
 #[cfg(target_os = "windows")]
-fn find_spp_com_port(device_name: &str) -> Option<String> {
+fn find_device_mac(device_name: &str) -> Option<u64> {
     use std::os::windows::process::CommandExt;
-    // Escape single-quotes in device name for PowerShell
     let safe_name = device_name.replace('\'', "''");
     let script = format!(
         r#"$dev = Get-PnpDevice -Class Bluetooth | Where-Object {{ $_.FriendlyName -like '*{safe_name}*' }} | Select-Object -First 1;
         if ($dev -and $dev.InstanceId -match 'DEV_([0-9A-Fa-f]{{12}})') {{
-            $mac = $Matches[1];
-            $port = Get-PnpDevice -Class Ports -Status OK | Where-Object {{ $_.InstanceId -like "*$mac*" }} | Select-Object -First 1;
-            if ($port -and $port.FriendlyName -match '(COM\d+)') {{
-                $Matches[1]
-            }}
+            $Matches[1]
         }}"#
     );
     let mut command = std::process::Command::new("powershell");
@@ -123,88 +142,170 @@ fn find_spp_com_port(device_name: &str) -> Option<String> {
         .output()
         .ok()?;
     let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if s.is_empty() { None } else { Some(s.lines().next()?.trim().to_string()) }
+    let mac_str = s.lines().next()?.trim().to_string();
+    if mac_str.len() == 12 {
+        u64::from_str_radix(&mac_str, 16).ok()
+    } else {
+        None
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
-fn find_spp_com_port(_device_name: &str) -> Option<String> { None }
+fn find_device_mac(_device_name: &str) -> Option<u64> { None }
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
-/// Open the SPP serial port for `device_name`, send a battery request,
-/// wait for a valid response, and return the parsed battery levels.
-/// Returns `None` if the device is not found or doesn't respond in time.
+/// Connect to the CMF Buds 2a via WinRT RFCOMM, send a battery request,
+/// collect the response, and return parsed battery levels.
+#[cfg(target_os = "windows")]
 pub fn read_battery(device_name: &str) -> Option<BatteryInfo> {
-    let com = find_spp_com_port(device_name)?;
-    info!("SPP: found port {com} for \"{device_name}\"");
+    use windows::{
+        Devices::Bluetooth::BluetoothDevice,
+        Devices::Bluetooth::Rfcomm::RfcommServiceId,
+        Networking::Sockets::StreamSocket,
+        Storage::Streams::{DataReader, DataWriter, InputStreamOptions},
+        core::GUID,
+    };
 
-    let mut port = serialport::new(&com, 9600)
-        .timeout(Duration::from_millis(1500))  // short per-read timeout so we can retry
-        .open()
-        .map_err(|e| warn!("SPP: cannot open {com}: {e}"))
-        .ok()?;
+    let mac = find_device_mac(device_name)?;
+    info!("SPP: found MAC {:012X} for \"{}\"", mac, device_name);
 
-    // Let the port settle after open
-    std::thread::sleep(Duration::from_millis(300));
+    // Get BluetoothDevice by MAC address
+    let bt_device = match BluetoothDevice::FromBluetoothAddressAsync(mac)
+        .and_then(|op| op.get())
+    {
+        Ok(d) => d,
+        Err(e) => { warn!("SPP: BluetoothDevice lookup failed: {e}"); return None; }
+    };
 
-    let packet = build_battery_request();
-    let mut rx_buf: Vec<u8> = Vec::new();
-    let mut buf = [0u8; 512];
+    info!("SPP: device \"{}\" status={:?}", 
+          bt_device.Name().unwrap_or_default(), 
+          bt_device.ConnectionStatus());
 
-    // Retry up to 4 times: send request, wait up to 2s for reply
-    for attempt in 1..=4u32 {
-        info!("SPP: battery request attempt {attempt} → {:02X?}", packet);
-        if let Err(e) = port.write_all(&packet) {
-            warn!("SPP: write error on attempt {attempt}: {e}");
-            continue;
-        }
-        // Flush write buffer
-        let _ = port.flush();
+    // Get RFCOMM service by custom UUID
+    let uuid = GUID::from(SPP_UUID);
+    let svc_id = match RfcommServiceId::FromUuid(uuid) {
+        Ok(s) => s,
+        Err(e) => { warn!("SPP: RfcommServiceId failed: {e}"); return None; }
+    };
 
-        let attempt_deadline = std::time::Instant::now() + Duration::from_secs(2);
-        rx_buf.clear();
+    let result = match bt_device.GetRfcommServicesForIdAsync(&svc_id)
+        .and_then(|op| op.get())
+    {
+        Ok(r) => r,
+        Err(e) => { warn!("SPP: GetRfcommServicesForId failed: {e}"); return None; }
+    };
 
-        loop {
-            if std::time::Instant::now() > attempt_deadline {
-                warn!("SPP: attempt {attempt} timed out, retrying…");
-                break; // retry the whole send
-            }
-            match port.read(&mut buf) {
-                Ok(n) if n > 0 => {
-                    rx_buf.extend_from_slice(&buf[..n]);
-                    info!("SPP: received {:02X?} (buf={}B)", &buf[..n], rx_buf.len());
-                    // Scan for 0x55 frame start in accumulated buffer
-                    let mut search_start = 0;
-                    while search_start < rx_buf.len() {
-                        if let Some(rel_pos) = rx_buf[search_start..].iter().position(|&b| b == 0x55) {
-                            let pos = search_start + rel_pos;
-                            let frame = &rx_buf[pos..];
-                            if frame.len() < 10 { break; } // wait for more data
-                            if let Some(info) = parse_battery(frame) {
-                                info!("SPP: battery parsed ✓ {:?}", info);
-                                return Some(info);
-                            }
-                            // Frame command didn't match — skip past this 0x55
-                            search_start = pos + 1;
-                        } else {
-                            break;
-                        }
-                    }
-                }
-                Ok(_) => {} // 0 bytes, loop again
-                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                    warn!("SPP: attempt {attempt} read timeout, retrying…");
-                    break; // retry send
-                }
-                Err(e) => {
-                    warn!("SPP: read error: {e}");
-                    return None;
-                }
-            }
-        }
-        // Brief pause before retry
-        std::thread::sleep(Duration::from_millis(200));
+    let services = match result.Services() {
+        Ok(s) => s,
+        Err(e) => { warn!("SPP: Services() failed: {e}"); return None; }
+    };
+
+    if services.Size().unwrap_or(0) == 0 {
+        warn!("SPP: no RFCOMM service found for UUID {SPP_UUID}");
+        return None;
     }
-    warn!("SPP: all attempts exhausted, no battery response");
+
+    let svc = match services.GetAt(0) {
+        Ok(s) => s,
+        Err(e) => { warn!("SPP: GetAt(0) failed: {e}"); return None; }
+    };
+
+    info!("SPP: connecting to RFCOMM service…");
+
+    // Connect StreamSocket
+    let socket = match StreamSocket::new() {
+        Ok(s) => s,
+        Err(e) => { warn!("SPP: StreamSocket::new failed: {e}"); return None; }
+    };
+
+    let host = match svc.ConnectionHostName() {
+        Ok(h) => h,
+        Err(e) => { warn!("SPP: ConnectionHostName failed: {e}"); return None; }
+    };
+    let service_name = match svc.ConnectionServiceName() {
+        Ok(n) => n,
+        Err(e) => { warn!("SPP: ConnectionServiceName failed: {e}"); return None; }
+    };
+
+    if let Err(e) = socket.ConnectAsync(&host, &service_name).and_then(|op| op.get()) {
+        warn!("SPP: socket connect failed: {e}");
+        return None;
+    }
+
+    info!("SPP: socket connected!");
+
+    // Brief settle before writing
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
+    // Send battery request
+    let packet = build_battery_request();
+    let output_stream = match socket.OutputStream() {
+        Ok(s) => s,
+        Err(e) => { warn!("SPP: OutputStream failed: {e}"); return None; }
+    };
+    let writer = match DataWriter::CreateDataWriter(&output_stream) {
+        Ok(w) => w,
+        Err(e) => { warn!("SPP: DataWriter failed: {e}"); return None; }
+    };
+
+    if let Err(e) = writer.WriteBytes(&packet) {
+        warn!("SPP: WriteBytes failed: {e}");
+        return None;
+    }
+    if let Err(e) = writer.StoreAsync().and_then(|op| op.get()) {
+        warn!("SPP: StoreAsync failed: {e}");
+        return None;
+    }
+    let _ = writer.DetachStream();
+
+    info!("SPP: sent battery request {:02X?}", packet);
+
+    // Read response — collect for up to 3 seconds
+    let input_stream = match socket.InputStream() {
+        Ok(s) => s,
+        Err(e) => { warn!("SPP: InputStream failed: {e}"); return None; }
+    };
+    let reader = match DataReader::CreateDataReader(&input_stream) {
+        Ok(r) => r,
+        Err(e) => { warn!("SPP: DataReader failed: {e}"); return None; }
+    };
+
+    if let Err(e) = reader.SetInputStreamOptions(InputStreamOptions::Partial) {
+        warn!("SPP: SetInputStreamOptions failed: {e}");
+    }
+
+    let mut all_bytes: Vec<u8> = Vec::new();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+
+    while std::time::Instant::now() < deadline {
+        let avail = match reader.LoadAsync(1024).and_then(|op| op.get()) {
+            Ok(n) => n,
+            Err(e) => { warn!("SPP: LoadAsync failed: {e}"); break; }
+        };
+
+        if avail > 0 {
+            let mut buf = vec![0u8; avail as usize];
+            if let Err(e) = reader.ReadBytes(&mut buf) {
+                warn!("SPP: ReadBytes failed: {e}");
+                break;
+            }
+            info!("SPP: read {} bytes: {:02X?}", buf.len(), buf);
+            all_bytes.extend_from_slice(&buf);
+
+            if let Some(info) = try_parse_battery(&all_bytes) {
+                let _ = socket.Close();
+                return Some(info);
+            }
+        } else {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+
+    let _ = socket.Close();
+    warn!("SPP: no battery response. Raw received: {:02X?}", all_bytes);
     None
 }
+
+#[cfg(not(target_os = "windows"))]
+pub fn read_battery(_device_name: &str) -> Option<BatteryInfo> { None }
