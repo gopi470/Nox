@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tauri::{Manager, State, AppHandle, Emitter};
 use tracker::{Tracker, Snapshot};
 use db::SessionRow;
+use chrono::Local;
 
 type TrackerState = Arc<Tracker>;
 
@@ -79,34 +80,117 @@ fn reset_all(state: State<TrackerState>) {
 }
 
 #[tauri::command]
-fn get_daily_history() -> Vec<db::DailyStatsRow> {
-    db::get_daily_history(7)
+fn get_daily_history(week_offset: i64) -> Vec<db::DailyStatsRow> {
+    db::get_daily_history(week_offset)
 }
 
 #[tauri::command]
-fn show_notification(title: String, body: String) {
+fn get_daily_history_bounds() -> db::DailyHistoryBounds {
+    db::get_daily_history_bounds()
+}
+
+#[tauri::command]
+fn get_query_log(state: State<TrackerState>) -> Vec<db::QueryLogRow> {
+    state.get_query_log()
+}
+
+#[tauri::command]
+fn export_all_data() -> ExportResult {
+    let backup = db::export_backup();
+    let exported_at = Local::now().to_rfc3339();
+    let pretty = serde_json::to_string_pretty(&backup).unwrap_or_default();
+    let filename = format!(
+        "nox-backup-{}.json",
+        Local::now().format("%Y-%m-%d_%H-%M-%S")
+    );
+
+    let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".into());
+    let primary_dir = std::path::PathBuf::from(appdata).join("EarbudsTracker").join("exports");
+    let _ = std::fs::create_dir_all(&primary_dir);
+    let primary_path = primary_dir.join(&filename);
+    let _ = std::fs::write(&primary_path, &pretty);
+
+    let downloads_dir = std::env::var("USERPROFILE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("Downloads");
+    let _ = std::fs::create_dir_all(&downloads_dir);
+    let downloads_path = downloads_dir.join(&filename);
+    let _ = std::fs::write(&downloads_path, &pretty);
+
+    ExportResult {
+        exported_at,
+        export_path: primary_path.to_string_lossy().to_string(),
+        download_path: downloads_path.to_string_lossy().to_string(),
+        sessions: backup.sessions.len(),
+        daily_stats: backup.daily_stats.len(),
+        app_audio_events: backup.app_audio_events.len(),
+        query_logs: backup.query_logs.len(),
+    }
+}
+
+#[derive(serde::Serialize)]
+struct ExportResult {
+    exported_at: String,
+    export_path: String,
+    download_path: String,
+    sessions: usize,
+    daily_stats: usize,
+    app_audio_events: usize,
+    query_logs: usize,
+}
+
+#[tauri::command]
+fn import_all_data(data: String) -> bool {
+    match serde_json::from_str::<db::BackupData>(&data) {
+        Ok(backup) => {
+            db::import_backup(&backup);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+#[tauri::command]
+fn show_notification(app: AppHandle, title: String, body: String) {
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
+        use windows::core::HSTRING;
+        use windows::Data::Xml::Dom::XmlDocument;
+        use windows::UI::Notifications::{ToastNotification, ToastNotificationManager};
+
+        let app_id = app.config().identifier.clone();
+        let title = escape_xml_text(&title);
+        let body = escape_xml_text(&body);
         std::thread::spawn(move || {
-            let cmd = format!(
-                "[void] [System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); \
-                 $notification = New-Object System.Windows.Forms.NotifyIcon; \
-                 $notification.Icon = [System.Drawing.SystemIcons]::Information; \
-                 $notification.BalloonTipText = '{}'; \
-                 $notification.BalloonTipTitle = '{}'; \
-                 $notification.Visible = $true; \
-                 $notification.ShowBalloonTip(5000);",
-                body.replace("'", "''"),
-                title.replace("'", "''")
+            let xml = format!(
+                r#"<toast><visual><binding template="ToastGeneric"><text>{}</text><text>{}</text></binding></visual></toast>"#,
+                title,
+                body
             );
-            let mut command = std::process::Command::new("powershell");
-            command.creation_flags(0x08000000);
-            let _ = command
-                .args(["-NoProfile", "-NonInteractive", "-Command", &cmd])
-                .output();
+
+            let Ok(doc) = XmlDocument::new() else { return; };
+            if doc.LoadXml(&HSTRING::from(xml)).is_err() {
+                return;
+            }
+
+            let Ok(toast) = ToastNotification::CreateToastNotification(&doc) else { return; };
+            let Ok(notifier) = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(app_id)) else {
+                return;
+            };
+
+            let _ = notifier.Show(&toast);
         });
     }
+}
+
+fn escape_xml_text(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 #[tauri::command]
@@ -291,6 +375,19 @@ pub fn run() {
         .setup(move |app| {
             let handle = app.handle().clone();
 
+            #[cfg(target_os = "windows")]
+            {
+                use windows::core::PCWSTR;
+                use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
+
+                let app_id = handle.config().identifier.clone();
+                let mut app_id_wide: Vec<u16> = app_id.encode_utf16().collect();
+                app_id_wide.push(0);
+                unsafe {
+                    let _ = SetCurrentProcessExplicitAppUserModelID(PCWSTR(app_id_wide.as_ptr()));
+                }
+            }
+
             // Wire state-change → push event to frontend
             let notify_handle = handle.clone();
             *tracker.on_state_change.lock() = Some(Box::new(move || {
@@ -370,14 +467,15 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            get_snapshot, get_sessions, reset_all, get_daily_history,
+            get_snapshot, get_sessions, reset_all, get_daily_history, get_daily_history_bounds,
             set_device_name, show_notification, get_paired_devices,
             verify_windows_password, get_device_battery, is_debug,
             get_sessions_for_breakdown, get_session_breakdown,
             set_session_note, export_session,
             get_battery_interval, set_battery_interval,
             get_battery_step, set_battery_step,
-            get_battery_graph_data, get_active_audio_apps
+            get_battery_graph_data, get_active_audio_apps,
+            get_query_log, export_all_data, import_all_data
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

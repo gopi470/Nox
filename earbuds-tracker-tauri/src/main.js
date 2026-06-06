@@ -15,14 +15,60 @@ const invoke = (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.co
   if (cmd === 'get_battery_interval') return 10;
   if (cmd === 'get_battery_step') return 5;
   if (cmd === 'get_snapshot') return { connected: true, playback: true };
+  if (cmd === 'get_daily_history') {
+    const weekOffset = args?.weekOffset || 0;
+    const base = new Date();
+    base.setHours(0, 0, 0, 0);
+    base.setDate(base.getDate() - (weekOffset * 7));
+    const rows = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(base);
+      d.setDate(base.getDate() - i);
+      const day = getLocalDateString(d);
+      rows.push({
+        day,
+        connected_secs: Math.max(0, 1800 + (6 - i) * 600 - weekOffset * 120),
+        playback_secs: Math.max(0, 1200 + (6 - i) * 480 - weekOffset * 90),
+      });
+    }
+    return rows;
+  }
+  if (cmd === 'get_daily_history_bounds') {
+    const oldest = new Date();
+    oldest.setHours(0, 0, 0, 0);
+    oldest.setDate(oldest.getDate() - 35);
+    return {
+      oldest_day: getLocalDateString(oldest),
+      newest_day: getLocalDateString(new Date()),
+    };
+  }
+  if (cmd === 'get_query_log') {
+    return [
+      { session_id: 12, session_start: '2026-06-06T09:45:00', event_ts: '2026-06-06T10:00:00', action: 'Battery query sent', details: 'Polling CMF Buds 2a' },
+      { session_id: 12, session_start: '2026-06-06T09:45:00', event_ts: '2026-06-06T10:00:01', action: 'Battery response received', details: 'L=Some(90) R=Some(90) C=Some(100)' },
+    ];
+  }
+  if (cmd === 'export_all_data') {
+    return JSON.stringify({
+      sessions: [],
+      daily_stats: [],
+      app_audio_events: [],
+      query_logs: [],
+    });
+  }
+  if (cmd === 'import_all_data') return true;
   return [];
 });
 const event  = window.__TAURI__ && window.__TAURI__.event;
 
 // ── Preferences State ──────────────────────────────────────────────────────────
-let currentGoal = parseFloat(localStorage.getItem('playback-goal') || '2.0');
+let currentGoal = (() => {
+  const storedGoal = parseFloat(localStorage.getItem('playback-goal') || '2.0');
+  return Number.isFinite(storedGoal) ? Math.min(12, Math.max(0.5, storedGoal)) : 2.0;
+})();
 let notificationsEnabled = localStorage.getItem('notifications-enabled') !== 'false';
 let currentDeviceName = localStorage.getItem('target-device') || 'CMF Buds 2a';
+let fontStyle = localStorage.getItem('font-style') || 'default';
 let batteryPollIntervalSec = 10;
 
 // Send initial device name to backend
@@ -40,18 +86,75 @@ let pulseFactor = 0;
 let animationFrameId = null;
 let mousePos = null;
 
+function getLocalDateString(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function getCachedTodayPlaybackSecs() {
+  const cacheDate = localStorage.getItem('daily-playback-cache-date');
+  if (cacheDate !== getLocalDateString()) return 0;
+
+  const cachedSecs = parseFloat(localStorage.getItem('daily-playback-cache-secs') || '0');
+  return Number.isFinite(cachedSecs) ? cachedSecs : 0;
+}
+
+function storeTodayPlaybackSecs(secs) {
+  if (!Number.isFinite(secs) || secs < 0) return;
+  localStorage.setItem('daily-playback-cache-date', getLocalDateString());
+  localStorage.setItem('daily-playback-cache-secs', String(secs));
+}
+
 // Elements
 const goalInput = document.getElementById('goal-input');
 const notificationToggle = document.getElementById('notification-toggle');
 const deviceNameInput = document.getElementById('device-name-input');
+const fontStyleSelect = document.getElementById('font-style-select');
+const batteryStepSelect = document.getElementById('battery-step-select');
+const importDataFile = document.getElementById('import-data-file');
+const exportDataBtn = document.getElementById('export-data-btn');
+const importDataBtn = document.getElementById('import-data-btn');
+const importInfoDialog = document.getElementById('import-info-dialog');
+const importInfoCancel = document.getElementById('import-info-cancel');
+const importInfoConfirm = document.getElementById('import-info-confirm');
+const importSuccessDialog = document.getElementById('import-success-dialog');
+const importSuccessMsg = document.getElementById('import-success-msg');
+const importSuccessClose = document.getElementById('import-success-close');
+const exportInfoDialog = document.getElementById('export-info-dialog');
+const exportInfoCancel = document.getElementById('export-info-cancel');
+const exportInfoConfirm = document.getElementById('export-info-confirm');
+const exportSuccessDialog = document.getElementById('export-success-dialog');
+const exportSuccessMsg = document.getElementById('export-success-msg');
+const exportSuccessClose = document.getElementById('export-success-close');
+const queryLogBtn = document.getElementById('query-log-btn');
+const queryLogDialog = document.getElementById('query-log-dialog');
+const queryLogList = document.getElementById('query-log-list');
+const queryLogCount = document.getElementById('query-log-count');
+const queryLogClose = document.getElementById('query-log-close');
+const queryLogRefresh = document.getElementById('query-log-refresh');
+
+function applyFontStyle(value) {
+  const mode = value === 'ndot' ? 'ndot' : 'default';
+  fontStyle = mode;
+  localStorage.setItem('font-style', mode);
+  document.body.classList.toggle('font-ndot', mode === 'ndot');
+  if (fontStyleSelect && fontStyleSelect.value !== mode) {
+    fontStyleSelect.value = mode;
+  }
+}
 
 // Initialize settings inputs
 if (goalInput) {
   goalInput.value = currentGoal;
   goalInput.addEventListener('change', (e) => {
-    currentGoal = parseFloat(e.target.value) || 2.0;
+    const parsed = parseFloat(e.target.value);
+    currentGoal = Number.isFinite(parsed) ? Math.min(12, Math.max(0.5, parsed)) : 2.0;
+    e.target.value = currentGoal.toFixed(1);
     localStorage.setItem('playback-goal', currentGoal);
     refreshSnapshot();
+    updateDailyStatsAndChart();
   });
 }
 if (notificationToggle) {
@@ -62,6 +165,13 @@ if (notificationToggle) {
     if (notificationsEnabled) {
       Notification.requestPermission();
     }
+  });
+}
+applyFontStyle(fontStyle);
+if (fontStyleSelect) {
+  fontStyleSelect.value = fontStyle;
+  fontStyleSelect.addEventListener('change', (e) => {
+    applyFontStyle(e.target.value);
   });
 }
 async function initDeviceNameDatalist() {
@@ -166,6 +276,271 @@ async function initBatteryStepSelect() {
 
 initBatteryStepSelect();
 
+function closeQueryLogDialog() {
+  if (queryLogDialog) {
+    queryLogDialog.hidden = true;
+  }
+}
+
+function closeExportInfoDialog() {
+  if (exportInfoDialog) exportInfoDialog.hidden = true;
+}
+
+function closeExportSuccessDialog() {
+  if (exportSuccessDialog) exportSuccessDialog.hidden = true;
+}
+
+function closeImportInfoDialog() {
+  if (importInfoDialog) importInfoDialog.hidden = true;
+}
+
+function closeImportSuccessDialog() {
+  if (importSuccessDialog) importSuccessDialog.hidden = true;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function prettyTimestamp(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '—';
+
+  const parsed = new Date(raw.replace(' ', 'T'));
+  if (!Number.isNaN(parsed.getTime())) {
+    return escapeHtml(new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    }).format(parsed));
+  }
+
+  return escapeHtml(raw.replace('T', ' '));
+}
+
+function renderQueryLog(entries) {
+  if (!queryLogList) return;
+
+  const list = Array.isArray(entries) ? entries : [];
+  if (queryLogCount) {
+    queryLogCount.textContent = `${list.length} entr${list.length === 1 ? 'y' : 'ies'}`;
+  }
+
+  if (list.length === 0) {
+    queryLogList.innerHTML = '<div class="query-log-empty">No earbud queries have been recorded yet.</div>';
+    return;
+  }
+
+  queryLogList.innerHTML = list.map(entry => `
+    <div class="query-log-item">
+      <div class="query-log-head">
+        <div class="query-log-action">${escapeHtml(entry.action || 'Query')}</div>
+        <div class="query-log-time">${prettyTimestamp(entry.event_ts || entry.timestamp || '')}</div>
+      </div>
+      <div class="query-log-meta">Session #${escapeHtml(entry.session_id ?? '—')} <span class="query-log-session-start">${prettyTimestamp(entry.session_start || '')}</span></div>
+      <div class="query-log-details">${escapeHtml(entry.details || '')}</div>
+    </div>
+  `).join('');
+}
+
+async function loadQueryLog() {
+  if (!queryLogList) return;
+  queryLogList.innerHTML = '<div class="query-log-empty">Loading query log...</div>';
+  try {
+    const entries = await invoke('get_query_log');
+    renderQueryLog(entries);
+  } catch (e) {
+    console.error('get_query_log failed', e);
+    queryLogList.innerHTML = '<div class="query-log-empty">Failed to load the earbud query log.</div>';
+    if (queryLogCount) queryLogCount.textContent = '0 entries';
+  }
+}
+
+async function openQueryLogDialog() {
+  if (!queryLogDialog) return;
+  queryLogDialog.hidden = false;
+  await loadQueryLog();
+}
+
+queryLogBtn?.addEventListener('click', () => {
+  openQueryLogDialog();
+});
+
+queryLogClose?.addEventListener('click', closeQueryLogDialog);
+queryLogRefresh?.addEventListener('click', loadQueryLog);
+
+queryLogDialog?.addEventListener('click', (e) => {
+  if (e.target === queryLogDialog) {
+    closeQueryLogDialog();
+  }
+});
+
+function buildSettingsBackup() {
+  return {
+    playback_goal: currentGoal,
+    notifications_enabled: notificationsEnabled,
+    target_device: currentDeviceName,
+    font_style: fontStyle,
+    battery_interval_secs: batteryPollIntervalSec,
+    battery_step: parseInt(batteryStepSelect?.value || '5', 10) || 5,
+  };
+}
+
+async function exportAllData() {
+  const exportBtn = exportDataBtn;
+  if (exportBtn) exportBtn.disabled = true;
+  try {
+    closeExportInfoDialog();
+    const result = await invoke('export_all_data');
+    const details = [
+      `Exported at: ${result.exported_at || '—'}`,
+      `Sessions: ${result.sessions ?? 0}`,
+      `Daily history rows: ${result.daily_stats ?? 0}`,
+      `App audio events: ${result.app_audio_events ?? 0}`,
+      `Query logs: ${result.query_logs ?? 0}`,
+      `Saved to: ${result.export_path || '—'}`,
+      `Download copy: ${result.download_path || '—'}`,
+    ];
+    if (exportSuccessMsg) {
+      exportSuccessMsg.innerHTML = details.map(line => `<div>${escapeHtml(line)}</div>`).join('');
+    }
+    if (exportSuccessDialog) exportSuccessDialog.hidden = false;
+  } catch (e) {
+    console.error('export_all_data failed', e);
+    alert('Export failed. Please try again.');
+  } finally {
+    if (exportBtn) exportBtn.disabled = false;
+  }
+}
+
+async function restoreSettingsFromBackup(settings = {}) {
+  if (typeof settings.playback_goal === 'number') {
+    currentGoal = Math.min(12, Math.max(0.5, settings.playback_goal));
+    if (goalInput) goalInput.value = currentGoal.toFixed(1);
+    localStorage.setItem('playback-goal', currentGoal);
+  }
+
+  if (typeof settings.notifications_enabled === 'boolean') {
+    notificationsEnabled = settings.notifications_enabled;
+    if (notificationToggle) notificationToggle.checked = notificationsEnabled;
+    localStorage.setItem('notifications-enabled', notificationsEnabled);
+  }
+
+  if (typeof settings.target_device === 'string' && settings.target_device.trim()) {
+    currentDeviceName = settings.target_device.trim();
+    localStorage.setItem('target-device', currentDeviceName);
+    const deviceSelect = document.getElementById('device-name-select');
+    if (deviceSelect && deviceSelect.value !== currentDeviceName && [...deviceSelect.options].some(opt => opt.value === currentDeviceName)) {
+      deviceSelect.value = currentDeviceName;
+    }
+    if (deviceNameInput) deviceNameInput.value = currentDeviceName;
+    const dashboardSub = document.getElementById('dashboard-sub');
+    if (dashboardSub) dashboardSub.textContent = `Real-time connection monitoring for ${currentDeviceName}`;
+    await invoke('set_device_name', { name: currentDeviceName }).catch(console.error);
+  }
+
+  if (typeof settings.font_style === 'string' && settings.font_style.trim()) {
+    applyFontStyle(settings.font_style.trim());
+  }
+
+  if (typeof settings.battery_interval_secs === 'number') {
+    batteryPollIntervalSec = settings.battery_interval_secs;
+    localStorage.setItem('battery-interval-secs', String(batteryPollIntervalSec));
+    if (batteryStepSelect && batteryStepSelect.value) {
+      // keep current UI consistent; actual interval select is managed below
+    }
+    const intervalSelect = document.getElementById('battery-interval-select');
+    if (intervalSelect) intervalSelect.value = String(batteryPollIntervalSec);
+    await invoke('set_battery_interval', { secs: batteryPollIntervalSec }).catch(console.error);
+  }
+
+  if (typeof settings.battery_step === 'number') {
+    const step = settings.battery_step;
+    if (batteryStepSelect) batteryStepSelect.value = String(step);
+    await invoke('set_battery_step', { step }).catch(console.error);
+  }
+
+  await refreshSnapshot();
+  updateDailyStatsAndChart();
+}
+
+async function importAllDataFromFile(file) {
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    const database = payload.database || payload;
+    const imported = await invoke('import_all_data', { data: JSON.stringify(database) });
+    if (!imported) {
+      throw new Error('Import failed');
+    }
+    await restoreSettingsFromBackup(payload.settings || {});
+    const dbCounts = {
+      sessions: Array.isArray(database.sessions) ? database.sessions.length : 0,
+      daily_stats: Array.isArray(database.daily_stats) ? database.daily_stats.length : 0,
+      app_audio_events: Array.isArray(database.app_audio_events) ? database.app_audio_events.length : 0,
+      query_logs: Array.isArray(database.query_logs) ? database.query_logs.length : 0,
+    };
+    if (importSuccessMsg) {
+      importSuccessMsg.innerHTML = [
+        `Imported sessions: ${dbCounts.sessions}`,
+        `Imported daily history rows: ${dbCounts.daily_stats}`,
+        `Imported app audio events: ${dbCounts.app_audio_events}`,
+        `Imported query logs: ${dbCounts.query_logs}`,
+        `Settings restored: ${payload.settings ? 'Yes' : 'No'}`,
+      ].map(line => `<div>${escapeHtml(line)}</div>`).join('');
+    }
+    if (importSuccessDialog) importSuccessDialog.hidden = false;
+  } catch (e) {
+    console.error('import_all_data failed', e);
+    alert('Import failed. Please make sure the file is a valid Nox backup.');
+  } finally {
+    if (importDataFile) importDataFile.value = '';
+  }
+}
+
+exportDataBtn?.addEventListener('click', () => {
+  if (exportInfoDialog) exportInfoDialog.hidden = false;
+});
+exportInfoCancel?.addEventListener('click', closeExportInfoDialog);
+exportInfoConfirm?.addEventListener('click', exportAllData);
+exportSuccessClose?.addEventListener('click', closeExportSuccessDialog);
+exportInfoDialog?.addEventListener('click', (e) => {
+  if (e.target === exportInfoDialog) closeExportInfoDialog();
+});
+exportSuccessDialog?.addEventListener('click', (e) => {
+  if (e.target === exportSuccessDialog) closeExportSuccessDialog();
+});
+importInfoCancel?.addEventListener('click', closeImportInfoDialog);
+importInfoConfirm?.addEventListener('click', () => {
+  closeImportInfoDialog();
+  importDataFile?.click();
+});
+importSuccessClose?.addEventListener('click', closeImportSuccessDialog);
+importInfoDialog?.addEventListener('click', (e) => {
+  if (e.target === importInfoDialog) closeImportInfoDialog();
+});
+importSuccessDialog?.addEventListener('click', (e) => {
+  if (e.target === importSuccessDialog) closeImportSuccessDialog();
+});
+importDataBtn?.addEventListener('click', () => {
+  if (importInfoDialog) importInfoDialog.hidden = false;
+});
+importDataFile?.addEventListener('change', () => {
+  const file = importDataFile.files?.[0];
+  if (file) importAllDataFromFile(file);
+});
+
 // Check build mode (debug vs release) to show/hide debug tag
 async function checkBuildMode() {
   try {
@@ -232,6 +607,232 @@ function fmtH(secs) {
   if (h) return `${h}h ${String(m).padStart(2,'0')}m`;
   if (m) return `${m}m ${String(sc).padStart(2,'0')}s`;
   return `${sc}s`;
+}
+
+let statsChartState = {
+  history: [],
+  hoverIndex: -1,
+  canvas: null,
+  wrapper: null,
+  tooltip: null,
+  bound: false,
+  layout: null,
+};
+let statsWeekOffset = 0;
+let statsMaxWeekOffset = null;
+let statsHistoryBoundsPromise = null;
+
+function fmtStatsDate(dateStr) {
+  if (!dateStr) return 'Unknown date';
+  const parsed = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return dateStr;
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(parsed);
+}
+
+function fmtStatsDayTitle(day) {
+  if (!day) return '';
+  const parsed = new Date(`${day.dateStr}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return day.label;
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }).format(parsed);
+}
+
+function getStatsWeekWindow(weekOffset = 0) {
+  const end = new Date();
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() - (weekOffset * 7));
+  const start = new Date(end);
+  start.setDate(start.getDate() - 6);
+  return { start, end };
+}
+
+function formatStatsWeekRange(weekOffset = 0) {
+  const { start, end } = getStatsWeekWindow(weekOffset);
+  const startFmt = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+  }).format(start);
+  const endFmt = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(end);
+  return `${startFmt} - ${endFmt}`;
+}
+
+function calcStatsMaxWeekOffset(bounds) {
+  if (!bounds?.oldest_day) return 0;
+  const oldest = new Date(`${bounds.oldest_day}T00:00:00`);
+  if (Number.isNaN(oldest.getTime())) return 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.max(0, Math.floor((today.getTime() - oldest.getTime()) / 86400000));
+  return Math.max(0, Math.floor(diffDays / 7));
+}
+
+async function ensureStatsHistoryBounds() {
+  if (statsMaxWeekOffset !== null) return statsMaxWeekOffset;
+  if (!statsHistoryBoundsPromise) {
+    statsHistoryBoundsPromise = invoke('get_daily_history_bounds')
+      .then((bounds) => {
+        statsMaxWeekOffset = calcStatsMaxWeekOffset(bounds);
+        return statsMaxWeekOffset;
+      })
+      .catch((err) => {
+        console.error('get_daily_history_bounds failed', err);
+        statsMaxWeekOffset = 0;
+        return statsMaxWeekOffset;
+      })
+      .finally(() => {
+        statsHistoryBoundsPromise = null;
+      });
+  }
+  return statsHistoryBoundsPromise;
+}
+
+function updateStatsWeekControls() {
+  const rangeEl = document.getElementById('stats-week-range');
+  const prevBtn = document.getElementById('stats-week-prev');
+  const nextBtn = document.getElementById('stats-week-next');
+  const canGoOlder = statsMaxWeekOffset === null ? true : statsWeekOffset < statsMaxWeekOffset;
+  if (rangeEl) rangeEl.textContent = formatStatsWeekRange(statsWeekOffset);
+  if (prevBtn) prevBtn.disabled = !canGoOlder;
+  if (nextBtn) nextBtn.disabled = statsWeekOffset <= 0;
+}
+
+async function changeStatsWeek(delta) {
+  if (delta > 0 && statsMaxWeekOffset !== null && statsWeekOffset >= statsMaxWeekOffset) {
+    updateStatsWeekControls();
+    return;
+  }
+  statsWeekOffset = Math.max(0, statsWeekOffset + delta);
+  if (statsMaxWeekOffset !== null) {
+    statsWeekOffset = Math.min(statsWeekOffset, statsMaxWeekOffset);
+  }
+  statsChartState.hoverIndex = -1;
+  if (statsChartState.tooltip) {
+    statsChartState.tooltip.hidden = true;
+  }
+  await updateDailyStatsAndChart();
+}
+
+function buildStatsDays(weekOffset = 0) {
+  const { start } = getStatsWeekWindow(weekOffset);
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    days.push({
+      dateStr: getLocalDateString(d),
+      label: new Intl.DateTimeFormat('en-US', {
+        weekday: 'short',
+        day: 'numeric',
+      }).format(d),
+      connected: 0,
+      playback: 0,
+    });
+  }
+  return days;
+}
+
+function bindStatsChartHover() {
+  const canvas = document.getElementById('stats-chart');
+  const wrapper = canvas?.parentElement;
+  const tooltip = document.getElementById('stats-chart-tooltip');
+  if (!canvas || !wrapper || !tooltip) return;
+
+  statsChartState.canvas = canvas;
+  statsChartState.wrapper = wrapper;
+  statsChartState.tooltip = tooltip;
+
+  if (statsChartState.bound) return;
+  statsChartState.bound = true;
+
+  const hideTooltip = () => {
+    statsChartState.hoverIndex = -1;
+    tooltip.hidden = true;
+    if (statsChartState.history.length) {
+      drawDailyChart(statsChartState.history);
+    }
+  };
+
+  const updateHover = (clientX, clientY) => {
+    const layout = statsChartState.layout;
+    if (!layout || !layout.hitBoxes || !layout.hitBoxes.length) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const hitIndex = layout.hitBoxes.findIndex((box) =>
+      x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1
+    );
+
+    if (hitIndex === statsChartState.hoverIndex) {
+      if (hitIndex >= 0) {
+        positionStatsTooltip(layout.days[hitIndex], clientX, clientY);
+      }
+      return;
+    }
+
+    statsChartState.hoverIndex = hitIndex;
+    tooltip.hidden = hitIndex < 0;
+    if (hitIndex >= 0) {
+      positionStatsTooltip(layout.days[hitIndex], clientX, clientY);
+    }
+    if (statsChartState.history.length) {
+      drawDailyChart(statsChartState.history);
+    }
+  };
+
+  canvas.addEventListener('mousemove', (e) => updateHover(e.clientX, e.clientY));
+  canvas.addEventListener('mouseleave', hideTooltip);
+  canvas.addEventListener('mouseout', hideTooltip);
+}
+
+function positionStatsTooltip(day, clientX, clientY) {
+  const tooltip = statsChartState.tooltip;
+  const wrapper = statsChartState.wrapper;
+  if (!tooltip || !wrapper || !day) return;
+
+  const goalSecs = currentGoal * 3600;
+  const goalMet = day.playback >= goalSecs;
+  tooltip.innerHTML = `
+    <div class="tooltip-title">${fmtStatsDayTitle(day)}</div>
+    <div class="tooltip-row"><span class="tooltip-label">Date</span><span class="tooltip-value">${fmtStatsDate(day.dateStr)}</span></div>
+    <div class="tooltip-row"><span class="tooltip-label">Connection</span><span class="tooltip-value">${fmtH(day.connected)}</span></div>
+    <div class="tooltip-row"><span class="tooltip-label">Playback</span><span class="tooltip-value green">${fmtH(day.playback)}</span></div>
+    <div class="tooltip-row"><span class="tooltip-label">Goal</span><span class="tooltip-value">${currentGoal.toFixed(1)}h</span></div>
+    <div class="tooltip-row"><span class="tooltip-label">Status</span><span class="tooltip-value ${goalMet ? 'green' : 'amber'}">${goalMet ? 'Goal met' : 'Goal not met'}</span></div>
+  `;
+  tooltip.hidden = false;
+
+  const wrapperRect = wrapper.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const padding = 12;
+
+  let left = clientX - wrapperRect.left + 14;
+  let top = clientY - wrapperRect.top - tooltipRect.height - 14;
+
+  if (left + tooltipRect.width > wrapperRect.width - padding) {
+    left = Math.max(padding, wrapperRect.width - tooltipRect.width - padding);
+  }
+  if (top < padding) {
+    top = clientY - wrapperRect.top + 14;
+  }
+  if (top + tooltipRect.height > wrapperRect.height - padding) {
+    top = Math.max(padding, wrapperRect.height - tooltipRect.height - padding);
+  }
+
+  tooltip.style.left = `${Math.max(padding, left)}px`;
+  tooltip.style.top = `${Math.max(padding, top)}px`;
 }
 
 // ── Ring canvas ───────────────────────────────────────────────────────────────
@@ -312,9 +913,9 @@ function drawRing(connSecs, playSecs, connected, playing, goalMet) {
     ? (goalMet ? '#fbbf24' : '#4ade80') 
     : '#2a3a2a';
 
-  // Apply smooth pulse glow to playback ring when active
+  // Apply a lighter pulse glow to playback ring when active
   if (playing) {
-    ctx.shadowBlur = (goalMet ? 6 : 4) * pulseFactor;
+    ctx.shadowBlur = (goalMet ? 3 : 4) * pulseFactor;
     ctx.shadowColor = goalMet ? '#fbbf24' : '#4ade80';
   } else {
     ctx.shadowBlur = 0;
@@ -346,7 +947,7 @@ function drawRing(connSecs, playSecs, connected, playing, goalMet) {
 
   // Inner progress arc (playback) with glow
   if (playing) {
-    ctx.shadowBlur = (goalMet ? 6 : 4) * pulseFactor;
+    ctx.shadowBlur = (goalMet ? 3 : 4) * pulseFactor;
     ctx.shadowColor = goalMet ? '#fbbf24' : '#4ade80';
   }
   const playSpan = playSecs > 0 ? ((playSecs % ROUND_SECS) / ROUND_SECS) * Math.PI * 2 : 0;
@@ -391,8 +992,8 @@ function drawRing(connSecs, playSecs, connected, playing, goalMet) {
     ctx.fillText(connTimeStr, cx, cy + 8);
   } else if (hoverType === 'play') {
     // Draw a subtle highlight glow on the inner ring
-    ctx.shadowBlur = 6;
-    ctx.shadowColor = goalMet ? 'rgba(251,191,36,0.25)' : 'rgba(74,222,128,0.25)';
+    ctx.shadowBlur = goalMet ? 3 : 6;
+    ctx.shadowColor = goalMet ? 'rgba(251,191,36,0.14)' : 'rgba(74,222,128,0.25)';
     const span = playSecs > 0 ? (playSpan > 0 ? playSpan : Math.PI * 2) : Math.PI * 2;
     arc(rIn, -Math.PI / 2, span, playSecs > 0 ? (goalMet ? '#fbbf24' : '#4ade80') : '#334433');
     ctx.shadowBlur = 0;
@@ -424,7 +1025,7 @@ function drawRing(connSecs, playSecs, connected, playing, goalMet) {
         const offset = (i / waveCount) * Math.PI * 2;
         const scale = 0.5 + Math.sin(time + offset) * 0.5;
         const rad = 10 + (rIn - 20) * scale;
-        const opacity = 0.12 * (1 - scale);
+        const opacity = (goalMet ? 0.06 : 0.12) * (1 - scale);
         ctx.beginPath();
         ctx.arc(cx, cy, rad, 0, Math.PI * 2);
         ctx.strokeStyle = goalMet ? `rgba(251,191,36,${opacity})` : `rgba(74,222,128,${opacity})`;
@@ -609,7 +1210,12 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
     } else {
       goalBarEl.style.background = 'linear-gradient(90deg, var(--accent), #8b5cf6)';
     }
-    if (goalPctEl) goalPctEl.textContent = `${Math.round(progressPct)}%`;
+    if (goalPctEl) {
+      goalPctEl.textContent = `${Math.round(progressPct)}%`;
+      goalPctEl.style.color = progressPct >= 100 ? '#111827' : 'rgba(255,255,255,0.72)';
+      goalPctEl.style.textShadow = progressPct >= 100 ? '0 1px 0 rgba(255,255,255,0.35)' : 'none';
+      goalPctEl.style.fontWeight = progressPct >= 100 ? '700' : '600';
+    }
   }
 }
 
@@ -636,7 +1242,12 @@ async function refreshSnapshot() {
   }
   updateBatteryUI(batteryInfo);
 
-  const totalTodayPlay = today.playback;
+  const snapshotTodayPlay = Number(today.playback) || 0;
+  const cachedTodayPlay = getCachedTodayPlaybackSecs();
+  const totalTodayPlay = Math.max(snapshotTodayPlay, cachedTodayPlay);
+  if (snapshotTodayPlay > 0 || totalTodayPlay > 0) {
+    storeTodayPlaybackSecs(totalTodayPlay);
+  }
   const goalMet = totalTodayPlay >= (currentGoal * 3600);
 
   // Update animation state variables
@@ -713,31 +1324,49 @@ async function refreshSnapshot() {
   // If stats page is active, update chart
   const activePage = document.querySelector('.nav-item.active').dataset.page;
   if (activePage === 'statistics') {
-    updateDailyStatsAndChart();
+    updateDailyStatsAndChart(totalTodayPlay);
   }
 }
 
 // ── Daily Stats & Chart ───────────────────────────────────────────────────────
-async function updateDailyStatsAndChart() {
+async function updateDailyStatsAndChart(todayPlaybackSecs = null) {
+  await ensureStatsHistoryBounds();
+  if (statsMaxWeekOffset !== null) {
+    statsWeekOffset = Math.min(statsWeekOffset, statsMaxWeekOffset);
+  }
   let history = [];
   try {
-    history = await invoke('get_daily_history');
+    history = await invoke('get_daily_history', { weekOffset: statsWeekOffset });
   } catch (e) {
     console.error('get_daily_history failed', e);
   }
-  calculateStreak(history);
-  drawDailyChart(history);
+  updateStatsWeekControls();
+  drawDailyChart(history, statsWeekOffset);
+
+  if (statsWeekOffset === 0) {
+    calculateStreak(history, todayPlaybackSecs);
+  } else {
+    let currentWeekHistory = [];
+    try {
+      currentWeekHistory = await invoke('get_daily_history', { weekOffset: 0 });
+    } catch (e) {
+      console.error('get_daily_history current week failed', e);
+    }
+    calculateStreak(currentWeekHistory, todayPlaybackSecs);
+  }
+  updateStatsWeekControls();
 }
 
-function calculateStreak(history) {
+function calculateStreak(history, todayPlaybackSecs = null) {
   if (!history || history.length === 0) {
     document.getElementById('streak-badge-container').style.display = 'none';
     return;
   }
 
+  const goalSecs = currentGoal * 3600;
   const playbackMap = new Map();
   history.forEach(row => {
-    playbackMap.set(row.day, row.connected_secs > 0 ? row.playback_secs : 0);
+    playbackMap.set(row.day, row.playback_secs || 0);
   });
 
   const getLocalDateString = (d) => {
@@ -754,16 +1383,20 @@ function calculateStreak(history) {
   const todayStr = getLocalDateString(today);
   const yesterdayStr = getLocalDateString(yesterday);
 
+  if (todayPlaybackSecs != null && Number.isFinite(todayPlaybackSecs)) {
+    playbackMap.set(todayStr, Math.max(playbackMap.get(todayStr) || 0, todayPlaybackSecs));
+  }
+
   let streak = 0;
   let checkDate = new Date();
 
   const todayPlay = playbackMap.get(todayStr) || 0;
   const yestPlay = playbackMap.get(yesterdayStr) || 0;
 
-  if (todayPlay > 0) {
+  if (todayPlay >= goalSecs) {
     streak = 1;
     checkDate.setDate(today.getDate() - 1);
-  } else if (yestPlay > 0) {
+  } else if (yestPlay >= goalSecs) {
     streak = 1;
     checkDate.setDate(yesterday.getDate() - 1);
   } else {
@@ -774,7 +1407,7 @@ function calculateStreak(history) {
   while (true) {
     const dateStr = getLocalDateString(checkDate);
     const playTime = playbackMap.get(dateStr) || 0;
-    if (playTime > 0) {
+    if (playTime >= goalSecs) {
       streak++;
       checkDate.setDate(checkDate.getDate() - 1);
     } else {
@@ -784,15 +1417,20 @@ function calculateStreak(history) {
 
   if (streak > 0) {
     document.getElementById('streak-count').textContent = streak;
+    const streakLabel = document.getElementById('streak-label');
+    if (streakLabel) {
+      streakLabel.textContent = streak === 1 ? 'Day Streak' : 'Days Streak';
+    }
     document.getElementById('streak-badge-container').style.display = 'inline-flex';
   } else {
     document.getElementById('streak-badge-container').style.display = 'none';
   }
 }
 
-function drawDailyChart(history) {
+function drawDailyChart(history, weekOffset = 0) {
   const chartCanvas = document.getElementById('stats-chart');
   if (!chartCanvas) return;
+  bindStatsChartHover();
 
   // Make canvas responsive and sharp for high-DPI displays
   const parent = chartCanvas.parentElement;
@@ -810,29 +1448,7 @@ function drawDailyChart(history) {
   
   c.clearRect(0, 0, w, h);
 
-  const days = [];
-  const getLocalDateString = (d) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  };
-
-  const getDayLabel = (d) => {
-    const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    return weekdays[d.getDay()] + ' ' + d.getDate();
-  };
-
-  for (let i = 6; i >= 0; i--) {
-    let d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push({
-      dateStr: getLocalDateString(d),
-      label: getDayLabel(d),
-      connected: 0,
-      playback: 0
-    });
-  }
+  const days = buildStatsDays(weekOffset);
 
   const historyMap = new Map();
   if (history) {
@@ -848,30 +1464,33 @@ function drawDailyChart(history) {
   });
 
   const maxSecs = Math.max(3600, ...days.map(d => Math.max(d.connected, d.playback)));
-  
+
   const chartBottom = h - 30;
   const chartTop = 20;
   const chartHeight = chartBottom - chartTop;
-  
+
   const barWidth = 32;
-  const gap = (w - (barWidth * 7)) / 8;
+  const gap = Math.max(8, (w - (barWidth * 7)) / 8);
+  const goalSecs = currentGoal * 3600;
 
   c.strokeStyle = '#2a2a2f';
   c.lineWidth = 1;
   c.font = '10px "Segoe UI", sans-serif';
   c.fillStyle = '#888898';
-  
-  for (let i = 0; i <= 2; i++) {
-    const y = chartTop + (chartHeight * i / 2);
+
+  const gridSegments = 5;
+  for (let i = 0; i <= gridSegments; i++) {
+    const y = chartTop + (chartHeight * i / gridSegments);
     c.beginPath();
     c.moveTo(gap, y);
     c.lineTo(w - gap, y);
     c.stroke();
-    
-    const labelVal = maxSecs - (maxSecs * i / 2);
+
+    const labelVal = maxSecs - (maxSecs * i / gridSegments);
     c.fillText(fmtH(labelVal), 10, y + 4);
   }
 
+  const hitBoxes = [];
   days.forEach((day, index) => {
     const x = gap + index * (barWidth + gap);
     const connHeight = (day.connected / maxSecs) * chartHeight;
@@ -895,11 +1514,38 @@ function drawDailyChart(history) {
       c.fill();
     }
 
+    if (statsChartState.hoverIndex === index) {
+      c.fillStyle = 'rgba(255, 255, 255, 0.05)';
+      c.beginPath();
+      c.roundRect(x - 4, chartTop - 2, barWidth + 8, chartHeight + 4, 10);
+      c.fill();
+      c.strokeStyle = 'rgba(255, 255, 255, 0.32)';
+      c.beginPath();
+      c.roundRect(x - 4, chartTop - 2, barWidth + 8, chartHeight + 4, 10);
+      c.stroke();
+      c.strokeStyle = '#2a2a2f';
+    }
+
     c.fillStyle = '#888898';
     c.font = '11px "Segoe UI", sans-serif';
     c.textAlign = 'center';
     c.fillText(day.label, x + barWidth / 2, chartBottom + 18);
+
+    hitBoxes.push({
+      x0: x - 8,
+      x1: x + barWidth + 8,
+      y0: chartTop - 6,
+      y1: chartBottom + 20,
+    });
   });
+
+  statsChartState.history = history || [];
+  statsChartState.layout = {
+    days,
+    hitBoxes,
+    goalSecs,
+    maxSecs,
+  };
 }
 
 function formatBatteryAgo(ms) {
@@ -1071,8 +1717,8 @@ async function loadHistory() {
   tbody.innerHTML = '';
   rows.forEach(r => {
     const tr = document.createElement('tr');
-    const start = r.session_start.replace('T', '  ').slice(0, 21);
-    const end   = r.session_end ? r.session_end.replace('T', '  ').slice(0, 21) : '—';
+    const start = prettyTimestamp(r.session_start);
+    const end   = r.session_end ? prettyTimestamp(r.session_end) : '—';
     const interrupted = r.interrupted === 1 || r.interrupted === true;
     const redStyle = interrupted ? 'color:#f87171;' : '';
     tr.innerHTML = `
@@ -1152,6 +1798,8 @@ document.getElementById('auth-confirm').addEventListener('click', async () => {
     if (authPwdInput) authPwdInput.value = '';
     try {
       await invoke('reset_all');
+      localStorage.removeItem('daily-playback-cache-date');
+      localStorage.removeItem('daily-playback-cache-secs');
       await refreshSnapshot();
     } catch (e) { console.error('reset_all failed', e); }
   } else {
@@ -1200,7 +1848,19 @@ function bdFmtDur(secs) {
 
 function bdFmtDate(ts) {
   if (!ts) return '—';
-  return ts.replace('T', '\u00A0\u00A0').slice(0, 21);
+  const parsed = new Date(String(ts).replace(' ', 'T'));
+  if (!Number.isNaN(parsed.getTime())) {
+    return new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    }).format(parsed);
+  }
+  return String(ts).replace('T', ' ');
 }
 
 function bdFmtBat(v) {
@@ -2010,3 +2670,5 @@ async function loadBatteryGraph() {
 document.getElementById('graph-duration')?.addEventListener('change', loadBatteryGraph);
 document.getElementById('graph-item')?.addEventListener('change', loadBatteryGraph);
 document.getElementById('graph-type')?.addEventListener('change', loadBatteryGraph);
+document.getElementById('stats-week-prev')?.addEventListener('click', () => changeStatsWeek(1));
+document.getElementById('stats-week-next')?.addEventListener('click', () => changeStatsWeek(-1));

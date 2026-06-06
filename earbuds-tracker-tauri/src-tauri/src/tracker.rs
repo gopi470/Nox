@@ -101,6 +101,31 @@ impl Tracker {
         *self.battery_step.read()
     }
 
+    pub fn record_query_log(&self, action: impl Into<String>, details: impl Into<String>) {
+        let (session_id, session_start) = {
+            let g = self.inner.lock();
+            if let Some(s) = &g.session {
+                (
+                    Some(s.id),
+                    Some(s.start_dt.format("%Y-%m-%dT%H:%M:%S").to_string()),
+                )
+            } else {
+                (None, None)
+            }
+        };
+
+        let Some(session_id) = session_id else { return; };
+        let Some(session_start) = session_start else { return; };
+        let event_ts = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        let action = action.into();
+        let details = details.into();
+        db::insert_query_log(session_id, &session_start, &event_ts, &action, &details);
+    }
+
+    pub fn get_query_log(&self) -> Vec<db::QueryLogRow> {
+        db::get_query_log(200)
+    }
+
     pub fn start(self: &Arc<Self>, app_handle: tauri::AppHandle) {
         db::init_db();
 
@@ -191,7 +216,19 @@ impl Tracker {
                         std::thread::sleep(Duration::from_secs(2));
                         let mut db_updated = false;
                         while bt_clone.is_connected() {
+                            let previous_bat = cache_clone.lock().clone();
+                            tracker_clone.record_query_log(
+                                "Battery query sent",
+                                format!("Polling {}", dev_for_bat),
+                            );
                             if let Some(mut bat) = crate::spp::read_battery(&dev_for_bat) {
+                                // Some devices omit the case reading when the buds are out of the case.
+                                // Keep the last known case level so the graphs stay structurally consistent.
+                                if bat.case.is_none() {
+                                    bat.case = previous_bat
+                                        .as_ref()
+                                        .and_then(|prev| prev.case);
+                                }
                                 let step = tracker_clone.get_battery_step();
                                 if step > 1 {
                                     bat.left = bat.left.map(|v| round_to_step(v, step));
@@ -205,12 +242,21 @@ impl Tracker {
                                 bat.updated_at = Some(updated_at);
 
                                 info!("SPP Battery Poll: L={:?} R={:?} C={:?} updated_at={}", bat.left, bat.right, bat.case, updated_at);
+                                tracker_clone.record_query_log(
+                                    "Battery response received",
+                                    format!("L={:?} R={:?} C={:?}", bat.left, bat.right, bat.case),
+                                );
                                 *cache_clone.lock() = Some(bat.clone());
                                 if !db_updated {
                                     db::set_connect_battery(id, bat.left, bat.right, bat.case);
                                     db_updated = true;
                                 }
                                 call_notify(&on_change_clone);
+                            } else {
+                                tracker_clone.record_query_log(
+                                    "Battery query failed",
+                                    "No battery response received",
+                                );
                             }
                             // Poll according to configured interval
                             let mut elapsed = 0;

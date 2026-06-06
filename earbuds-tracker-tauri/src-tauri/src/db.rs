@@ -1,5 +1,5 @@
 // db.rs – SQLite persistence layer (mirrors database.py)
-use chrono::{Local, NaiveDate, NaiveDateTime};
+use chrono::{Duration, Local, NaiveDate, NaiveDateTime};
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use rusqlite::{params, Connection, Result};
@@ -35,16 +35,26 @@ fn conn() -> &'static Mutex<Connection> {
                  connected_secs REAL NOT NULL DEFAULT 0,
                  playback_secs  REAL NOT NULL DEFAULT 0
              );
-             CREATE TABLE IF NOT EXISTS app_audio_events (
+              CREATE TABLE IF NOT EXISTS app_audio_events (
+                  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                  session_id     INTEGER NOT NULL,
+                  process_name   TEXT NOT NULL,
+                  start_ts       TEXT NOT NULL,
+                  end_ts         TEXT,
+                  duration_secs  REAL
+              );
+              CREATE INDEX IF NOT EXISTS idx_app_events_session
+                  ON app_audio_events(session_id);
+             CREATE TABLE IF NOT EXISTS query_logs (
                  id             INTEGER PRIMARY KEY AUTOINCREMENT,
                  session_id     INTEGER NOT NULL,
-                 process_name   TEXT NOT NULL,
-                 start_ts       TEXT NOT NULL,
-                 end_ts         TEXT,
-                 duration_secs  REAL
+                 session_start  TEXT NOT NULL,
+                 event_ts       TEXT NOT NULL,
+                 action         TEXT NOT NULL,
+                 details        TEXT NOT NULL
              );
-             CREATE INDEX IF NOT EXISTS idx_app_events_session
-                 ON app_audio_events(session_id);",
+             CREATE INDEX IF NOT EXISTS idx_query_logs_session_time
+                 ON query_logs(session_id, event_ts DESC);",
         )
         .expect("DB init failed");
         // ── Column migrations (safe on existing DBs) ────────────────────────
@@ -142,9 +152,25 @@ pub fn add_to_daily(day: &NaiveDate, connected: f64, playback: f64) {
     .ok();
 }
 
+pub fn insert_query_log(
+    session_id: i64,
+    session_start: &str,
+    event_ts: &str,
+    action: &str,
+    details: &str,
+) {
+    let db = conn().lock();
+    db.execute(
+        "INSERT INTO query_logs (session_id, session_start, event_ts, action, details)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![session_id, session_start, event_ts, action, details],
+    )
+    .ok();
+}
+
 // ── Query helpers ────────────────────────────────────────────────────────────
 
-#[derive(serde::Serialize, Clone, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default)]
 pub struct StatsPeriod {
     pub connected: f64,
     pub playback: f64,
@@ -172,7 +198,248 @@ pub fn get_lifetime_stats() -> StatsPeriod {
     .unwrap_or_default()
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct QueryLogRow {
+    pub id: i64,
+    pub session_id: i64,
+    pub session_start: String,
+    pub event_ts: String,
+    pub action: String,
+    pub details: String,
+}
+
+pub fn get_query_log(limit: usize) -> Vec<QueryLogRow> {
+    let db = conn().lock();
+    let mut stmt = db
+        .prepare(
+            "SELECT id, session_id, session_start, event_ts, action, details
+             FROM query_logs
+             ORDER BY id DESC
+             LIMIT ?1",
+        )
+        .expect("prepare failed");
+    stmt.query_map(params![limit as i64], |row| {
+        Ok(QueryLogRow {
+            id: row.get(0)?,
+            session_id: row.get(1)?,
+            session_start: row.get(2)?,
+            event_ts: row.get(3)?,
+            action: row.get(4)?,
+            details: row.get(5)?,
+        })
+    })
+    .unwrap()
+    .filter_map(|r| r.ok())
+    .collect()
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct AppAudioEventBackupRow {
+    pub id: i64,
+    pub session_id: i64,
+    pub process_name: String,
+    pub start_ts: String,
+    pub end_ts: Option<String>,
+    pub duration_secs: Option<f64>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct BackupData {
+    pub sessions: Vec<SessionBreakdownRow>,
+    pub daily_stats: Vec<DailyStatsRow>,
+    pub app_audio_events: Vec<AppAudioEventBackupRow>,
+    pub query_logs: Vec<QueryLogRow>,
+}
+
+pub fn get_all_sessions() -> Vec<SessionBreakdownRow> {
+    let db = conn().lock();
+    let mut stmt = db
+        .prepare(
+            "SELECT id, session_start, COALESCE(session_end,''), connected_secs, playback_secs,
+                    bat_left_connect, bat_right_connect, bat_case_connect,
+                    bat_left_disc, bat_right_disc, bat_case_disc, notes, interrupted
+             FROM sessions ORDER BY id ASC",
+        )
+        .expect("prepare failed");
+    stmt.query_map([], |row| {
+        Ok(SessionBreakdownRow {
+            id: row.get(0)?,
+            session_start: row.get(1)?,
+            session_end: row.get(2)?,
+            connected_secs: row.get(3)?,
+            playback_secs: row.get(4)?,
+            bat_left_connect:  row.get(5)?,
+            bat_right_connect: row.get(6)?,
+            bat_case_connect:  row.get(7)?,
+            bat_left_disc:     row.get(8)?,
+            bat_right_disc:    row.get(9)?,
+            bat_case_disc:     row.get(10)?,
+            notes:             row.get(11)?,
+            interrupted:       row.get(12)?,
+        })
+    })
+    .unwrap()
+    .filter_map(|r| r.ok())
+    .collect()
+}
+
+pub fn get_all_daily_stats() -> Vec<DailyStatsRow> {
+    let db = conn().lock();
+    let mut stmt = db
+        .prepare("SELECT day, connected_secs, playback_secs FROM daily_stats ORDER BY day ASC")
+        .expect("prepare failed");
+    stmt.query_map([], |row| {
+        Ok(DailyStatsRow {
+            day: row.get(0)?,
+            connected_secs: row.get(1)?,
+            playback_secs: row.get(2)?,
+        })
+    })
+    .unwrap()
+    .filter_map(|r| r.ok())
+    .collect()
+}
+
+pub fn get_all_app_audio_events() -> Vec<AppAudioEventBackupRow> {
+    let db = conn().lock();
+    let mut stmt = db
+        .prepare(
+            "SELECT id, session_id, process_name, start_ts, end_ts, duration_secs
+             FROM app_audio_events
+             ORDER BY id ASC",
+        )
+        .expect("prepare failed");
+    stmt.query_map([], |row| {
+        Ok(AppAudioEventBackupRow {
+            id: row.get(0)?,
+            session_id: row.get(1)?,
+            process_name: row.get(2)?,
+            start_ts: row.get(3)?,
+            end_ts: row.get(4)?,
+            duration_secs: row.get(5)?,
+        })
+    })
+    .unwrap()
+    .filter_map(|r| r.ok())
+    .collect()
+}
+
+pub fn get_all_query_logs() -> Vec<QueryLogRow> {
+    let db = conn().lock();
+    let mut stmt = db
+        .prepare(
+            "SELECT id, session_id, session_start, event_ts, action, details
+             FROM query_logs
+             ORDER BY id ASC",
+        )
+        .expect("prepare failed");
+    stmt.query_map([], |row| {
+        Ok(QueryLogRow {
+            id: row.get(0)?,
+            session_id: row.get(1)?,
+            session_start: row.get(2)?,
+            event_ts: row.get(3)?,
+            action: row.get(4)?,
+            details: row.get(5)?,
+        })
+    })
+    .unwrap()
+    .filter_map(|r| r.ok())
+    .collect()
+}
+
+pub fn export_backup() -> BackupData {
+    BackupData {
+        sessions: get_all_sessions(),
+        daily_stats: get_all_daily_stats(),
+        app_audio_events: get_all_app_audio_events(),
+        query_logs: get_all_query_logs(),
+    }
+}
+
+pub fn import_backup(backup: &BackupData) {
+    let mut db = conn().lock();
+    let tx = db.transaction().expect("begin import transaction failed");
+
+    tx.execute_batch(
+        "DELETE FROM sessions;
+         DELETE FROM daily_stats;
+         DELETE FROM app_audio_events;
+         DELETE FROM query_logs;
+         DELETE FROM sqlite_sequence WHERE name IN ('sessions', 'app_audio_events', 'query_logs');",
+    )
+    .ok();
+
+    for row in &backup.sessions {
+        tx.execute(
+            "INSERT INTO sessions (
+                id, session_start, session_end, connected_secs, playback_secs,
+                bat_left_connect, bat_right_connect, bat_case_connect,
+                bat_left_disc, bat_right_disc, bat_case_disc, notes, interrupted
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                row.id,
+                row.session_start,
+                row.session_end,
+                row.connected_secs,
+                row.playback_secs,
+                row.bat_left_connect,
+                row.bat_right_connect,
+                row.bat_case_connect,
+                row.bat_left_disc,
+                row.bat_right_disc,
+                row.bat_case_disc,
+                row.notes,
+                row.interrupted,
+            ],
+        )
+        .expect("failed to import session row");
+    }
+
+    for row in &backup.daily_stats {
+        tx.execute(
+            "INSERT INTO daily_stats (day, connected_secs, playback_secs) VALUES (?1, ?2, ?3)",
+            params![row.day, row.connected_secs, row.playback_secs],
+        )
+        .expect("failed to import daily row");
+    }
+
+    for row in &backup.app_audio_events {
+        tx.execute(
+            "INSERT INTO app_audio_events (id, session_id, process_name, start_ts, end_ts, duration_secs)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                row.id,
+                row.session_id,
+                row.process_name,
+                row.start_ts,
+                row.end_ts,
+                row.duration_secs,
+            ],
+        )
+        .expect("failed to import app audio row");
+    }
+
+    for row in &backup.query_logs {
+        tx.execute(
+            "INSERT INTO query_logs (id, session_id, session_start, event_ts, action, details)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                row.id,
+                row.session_id,
+                row.session_start,
+                row.event_ts,
+                row.action,
+                row.details,
+            ],
+        )
+        .expect("failed to import query log row");
+    }
+
+    tx.commit().expect("commit import transaction failed");
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct SessionRow {
     pub id: i64,
     pub session_start: String,
@@ -221,19 +488,29 @@ pub fn get_recent_sessions(limit: usize) -> Vec<SessionRow> {
     .collect()
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct DailyStatsRow {
     pub day: String,
     pub connected_secs: f64,
     pub playback_secs: f64,
 }
 
-pub fn get_daily_history(limit: usize) -> Vec<DailyStatsRow> {
+pub fn get_daily_history(week_offset: i64) -> Vec<DailyStatsRow> {
+    let today = Local::now().date_naive();
+    let end = today - Duration::days(week_offset.saturating_mul(7));
+    let start = end - Duration::days(6);
     let db = conn().lock();
     let mut stmt = db
-        .prepare("SELECT day, connected_secs, playback_secs FROM daily_stats ORDER BY day DESC LIMIT ?1")
+        .prepare(
+            "SELECT day, connected_secs, playback_secs
+             FROM daily_stats
+             WHERE day BETWEEN ?1 AND ?2
+             ORDER BY day ASC",
+        )
         .expect("prepare failed");
-    stmt.query_map(params![limit as i64], |row| {
+    stmt.query_map(
+        params![start.to_string(), end.to_string()],
+        |row| {
         Ok(DailyStatsRow {
             day: row.get(0)?,
             connected_secs: row.get(1)?,
@@ -245,10 +522,43 @@ pub fn get_daily_history(limit: usize) -> Vec<DailyStatsRow> {
     .collect()
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct DailyHistoryBounds {
+    pub oldest_day: Option<String>,
+    pub newest_day: Option<String>,
+}
+
+pub fn get_daily_history_bounds() -> DailyHistoryBounds {
+    let db = conn().lock();
+    let mut stmt = match db.prepare("SELECT MIN(day), MAX(day) FROM daily_stats") {
+        Ok(stmt) => stmt,
+        Err(_) => {
+            return DailyHistoryBounds {
+                oldest_day: None,
+                newest_day: None,
+            };
+        }
+    };
+
+    match stmt.query_row([], |row| {
+        Ok(DailyHistoryBounds {
+            oldest_day: row.get(0)?,
+            newest_day: row.get(1)?,
+        })
+    }) {
+        Ok(bounds) => bounds,
+        Err(_) => DailyHistoryBounds {
+            oldest_day: None,
+            newest_day: None,
+        },
+    }
+}
+
 pub fn reset_all_data() {
     let db = conn().lock();
     db.execute_batch(
-        "DELETE FROM sessions; DELETE FROM daily_stats; DELETE FROM app_audio_events;",
+        "DELETE FROM sessions; DELETE FROM daily_stats; DELETE FROM app_audio_events; DELETE FROM query_logs;
+         DELETE FROM sqlite_sequence WHERE name IN ('sessions', 'app_audio_events', 'query_logs');",
     )
     .ok();
 }
@@ -394,7 +704,7 @@ pub fn set_session_note(session_id: i64, note: &str) {
 
 // ── Extended session row (includes notes) ────────────────────────────────────
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct SessionBreakdownRow {
     pub id: i64,
     pub session_start: String,
