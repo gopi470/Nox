@@ -1,6 +1,6 @@
-# Earbuds Tracker – Desktop App (Tauri Frontend & Backend)
+# Nox – Desktop App (Tauri Frontend & Backend)
 
-This folder contains the Tauri (v2) desktop application codebase for **Earbuds Tracker**. It houses the Rust backend core alongside the Vanilla HTML/CSS/JavaScript web dashboard.
+This folder contains the Tauri (v2) desktop application codebase for **Nox**. It houses the Rust backend core alongside the Vanilla HTML/CSS/JavaScript web dashboard.
 
 ---
 

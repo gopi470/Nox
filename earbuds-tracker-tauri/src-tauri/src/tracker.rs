@@ -1,5 +1,6 @@
 // tracker.rs – Core session state machine (mirrors tracker.py)
 use chrono::{Local, NaiveDate, NaiveDateTime};
+use std::time::{SystemTime, UNIX_EPOCH};
 use log::info;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -41,6 +42,7 @@ use parking_lot::RwLock;
 pub struct Tracker {
     device_name: Arc<RwLock<String>>,
     battery_interval_secs: Arc<RwLock<u64>>,
+    battery_step: Arc<RwLock<u8>>,
     bt: Arc<BluetoothMonitor>,
     audio: Arc<AudioMonitor>,
     app_audio: Arc<AppAudioMonitor>,
@@ -50,12 +52,22 @@ pub struct Tracker {
     pub on_state_change: Arc<Mutex<Option<Box<dyn Fn() + Send + 'static>>>>,
 }
 
+fn round_to_step(val: u8, step: u8) -> u8 {
+    if step <= 1 {
+        return val;
+    }
+    let half_step = step / 2;
+    let rounded = ((val + half_step) / step) * step;
+    rounded.min(100)
+}
+
 impl Tracker {
-    pub fn new(device_name: &str, battery_interval_secs: u64) -> Self {
+    pub fn new(device_name: &str, battery_interval_secs: u64, battery_step: u8) -> Self {
         let dev_name = Arc::new(RwLock::new(device_name.to_string()));
         Self {
             device_name: dev_name.clone(),
             battery_interval_secs: Arc::new(RwLock::new(battery_interval_secs)),
+            battery_step: Arc::new(RwLock::new(battery_step)),
             bt: Arc::new(BluetoothMonitor::new(dev_name.clone())),
             audio: Arc::new(AudioMonitor::new(dev_name.clone())),
             app_audio: Arc::new(AppAudioMonitor::new(dev_name)),
@@ -79,6 +91,14 @@ impl Tracker {
 
     pub fn get_battery_interval_secs(&self) -> u64 {
         *self.battery_interval_secs.read()
+    }
+
+    pub fn set_battery_step(&self, step: u8) {
+        *self.battery_step.write() = step;
+    }
+
+    pub fn get_battery_step(&self) -> u8 {
+        *self.battery_step.read()
     }
 
     pub fn start(self: &Arc<Self>, app_handle: tauri::AppHandle) {
@@ -118,7 +138,10 @@ impl Tracker {
                 let mut g = inner_pause.lock();
                 if let Some(s) = g.session.as_mut() {
                     if let Some(ps) = s.play_start.take() {
-                        s.playback_secs += ps.elapsed().as_secs_f64();
+                        // Compensate for detection offsets: +5s grace period, -2s loud_count = +3s net overestimation
+                        let mut elapsed = ps.elapsed().as_secs_f64() - 3.0;
+                        if elapsed < 0.0 { elapsed = 0.0; }
+                        s.playback_secs += elapsed;
                     }
                 }
                 call_notify(&notify_pause);
@@ -168,8 +191,20 @@ impl Tracker {
                         std::thread::sleep(Duration::from_secs(2));
                         let mut db_updated = false;
                         while bt_clone.is_connected() {
-                            if let Some(bat) = crate::spp::read_battery(&dev_for_bat) {
-                                info!("SPP Battery Poll: L={:?} R={:?} C={:?}", bat.left, bat.right, bat.case);
+                            if let Some(mut bat) = crate::spp::read_battery(&dev_for_bat) {
+                                let step = tracker_clone.get_battery_step();
+                                if step > 1 {
+                                    bat.left = bat.left.map(|v| round_to_step(v, step));
+                                    bat.right = bat.right.map(|v| round_to_step(v, step));
+                                    bat.case = bat.case.map(|v| round_to_step(v, step));
+                                }
+                                let updated_at = SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis() as u64;
+                                bat.updated_at = Some(updated_at);
+
+                                info!("SPP Battery Poll: L={:?} R={:?} C={:?} updated_at={}", bat.left, bat.right, bat.case, updated_at);
                                 *cache_clone.lock() = Some(bat.clone());
                                 if !db_updated {
                                     db::set_connect_battery(id, bat.left, bat.right, bat.case);

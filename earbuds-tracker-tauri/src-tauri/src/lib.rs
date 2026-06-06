@@ -21,6 +21,11 @@ fn get_snapshot(state: State<TrackerState>) -> Snapshot {
 }
 
 #[tauri::command]
+fn get_active_audio_apps(_state: State<TrackerState>) -> Vec<String> {
+    crate::app_audio::get_all_app_peaks()
+}
+
+#[tauri::command]
 fn get_sessions(state: State<TrackerState>) -> Vec<SessionRow> {
     state.get_recent_sessions()
 }
@@ -49,6 +54,22 @@ fn set_battery_interval(secs: u64, state: State<TrackerState>) {
         std::fs::create_dir_all(&dir).ok();
         let path = dir.join("battery_interval.txt");
         let _ = std::fs::write(path, secs.to_string());
+    }
+}
+
+#[tauri::command]
+fn get_battery_step(state: State<TrackerState>) -> u8 {
+    state.get_battery_step()
+}
+
+#[tauri::command]
+fn set_battery_step(step: u8, state: State<TrackerState>) {
+    state.set_battery_step(step);
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let dir = std::path::PathBuf::from(appdata).join("EarbudsTracker");
+        std::fs::create_dir_all(&dir).ok();
+        let path = dir.join("battery_step.txt");
+        let _ = std::fs::write(path, step.to_string());
     }
 }
 
@@ -237,6 +258,7 @@ pub fn run() {
 
     let mut initial_device = "CMF Buds 2a".to_string();
     let mut initial_interval = 300; // 5 minutes default
+    let mut initial_step = 5; // 5% default
     if let Ok(appdata) = std::env::var("APPDATA") {
         let dir = std::path::PathBuf::from(appdata).join("EarbudsTracker");
         let path_dev = dir.join("target_device.txt");
@@ -252,8 +274,16 @@ pub fn run() {
                 initial_interval = parsed;
             }
         }
+        let path_step = dir.join("battery_step.txt");
+        if let Ok(content) = std::fs::read_to_string(path_step) {
+            if let Ok(parsed) = content.trim().parse::<u8>() {
+                if parsed == 1 || parsed == 5 || parsed == 10 {
+                    initial_step = parsed;
+                }
+            }
+        }
     }
-    let tracker = Arc::new(Tracker::new(&initial_device, initial_interval));
+    let tracker = Arc::new(Tracker::new(&initial_device, initial_interval, initial_step));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -300,7 +330,7 @@ pub fn run() {
                 let tray_handle = handle.clone();
                 TrayIconBuilder::new()
                     .icon(app.default_window_icon().unwrap().clone())
-                    .tooltip("EarbudsTracker")
+                    .tooltip("Nox")
                     .menu(&menu)
                     .on_menu_event(move |app_handle, event| {
                         match event.id().as_ref() {
@@ -346,7 +376,8 @@ pub fn run() {
             get_sessions_for_breakdown, get_session_breakdown,
             set_session_note, export_session,
             get_battery_interval, set_battery_interval,
-            get_battery_graph_data
+            get_battery_step, set_battery_step,
+            get_battery_graph_data, get_active_audio_apps
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

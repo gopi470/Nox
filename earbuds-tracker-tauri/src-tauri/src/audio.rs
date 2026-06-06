@@ -47,18 +47,21 @@ impl AudioMonitor {
                     let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
                 }
                 let mut silent_count: u32 = 0;
+                let mut loud_count: u32 = 0;
                 while !stop_flag.load(Ordering::SeqCst) {
                     let dev_name = device_name_lock.read().to_lowercase();
                     let peak = get_peak_level(&dev_name).unwrap_or(0.0);
                     if peak > SILENCE_THRESHOLD {
                         silent_count = 0;
-                        if !playing.load(Ordering::SeqCst) {
+                        loud_count += 1;
+                        if !playing.load(Ordering::SeqCst) && loud_count >= 2 {
                             playing.store(true, Ordering::SeqCst);
                             info!("Audio PLAYING (peak={peak:.4})");
                             on_play();
                         }
                     } else {
                         silent_count += 1;
+                        loud_count = 0;
                         if playing.load(Ordering::SeqCst) && silent_count >= GRACE_CHECKS {
                             playing.store(false, Ordering::SeqCst);
                             info!("Audio PAUSED after {silent_count} silent checks");

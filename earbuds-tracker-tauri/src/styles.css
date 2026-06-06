@@ -43,6 +43,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); overflow: 
 }
 .brand-icon { font-size: 20px; }
 .brand-name { font-size: 13px; font-weight: 700; letter-spacing: 0.2px; color: var(--text); }
+.brand-x { color: #ef4444; }
 
 .nav-list { list-style: none; display: flex; flex-direction: column; gap: 2px; padding: 0 8px; }
 
@@ -571,10 +572,11 @@ input:checked + .slider:before {
 
 .battery-page-container {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
   padding: 24px 0 40px 0;
   width: 100%;
+  gap: 0;
 }
 
 .battery-page-container .battery-card {
@@ -584,6 +586,11 @@ input:checked + .slider:before {
   box-shadow: 0 12px 36px rgba(0,0,0,0.3);
   border-radius: 12px;
   background: var(--bg2);
+}
+
+.battery-analytics-card {
+  width: 100%;
+  max-width: 860px;
 }
 
 .debug-tag {
@@ -734,7 +741,7 @@ input:checked + .slider:before {
 /* Battery drain canvas */
 .bd-battery-canvas-wrap {
   position: relative;
-  height: 140px;
+  height: 240px;
   width: 100%;
 }
 .bd-battery-canvas-wrap canvas {
@@ -770,33 +777,41 @@ input:checked + .slider:before {
 /* Battery Analytics styles */
 .battery-analytics-card {
   margin-top: 24px;
-  padding: 24px;
+  padding: 24px 28px;
 }
-.analytics-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 16px;
+.analytics-title-group {
+  margin-bottom: 16px;
+  padding-bottom: 14px;
   border-bottom: 1px solid var(--border);
-  padding-bottom: 16px;
-  margin-bottom: 8px;
+}
+.analytics-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 4px 0;
+  letter-spacing: 0.2px;
+}
+.analytics-subtitle {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0;
 }
 .analytics-filters {
   display: flex;
-  gap: 16px;
+  gap: 14px;
   flex-wrap: wrap;
+  margin-bottom: 20px;
 }
 .filter-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 .filter-group label {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
   color: var(--muted);
 }
 .filter-select {
@@ -804,21 +819,29 @@ input:checked + .slider:before {
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 13px;
+  padding: 6px 10px;
+  font-size: 12px;
   font-family: inherit;
   outline: none;
   cursor: pointer;
-  min-width: 120px;
-  transition: border-color 0.15s, background-color 0.15s;
+  min-width: 115px;
+  transition: border-color 0.15s, background 0.15s;
+  color-scheme: dark;
+}
+.filter-select option {
+  background: var(--bg3);
+  color: var(--text);
+}
+.filter-select option:checked {
+  background: var(--bg2);
+  color: var(--text);
 }
 .filter-select:hover {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 .filter-select:focus {
   border-color: var(--accent);
-  background: var(--bg3);
 }
 .graph-wrapper {
   position: relative;
@@ -826,7 +849,7 @@ input:checked + .slider:before {
   width: 100%;
 }
 .graph-empty-state {
-  display: flex;
+  display: none;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -834,6 +857,7 @@ input:checked + .slider:before {
   text-align: center;
   color: var(--muted);
   gap: 12px;
+  font-size: 13px;
 }
 
 /* Responsive */

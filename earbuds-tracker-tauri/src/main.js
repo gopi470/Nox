@@ -1,12 +1,29 @@
-// main.js – EarbudsTracker frontend logic
+// main.js – Nox frontend logic
 // Tauri v2 exposes invoke under window.__TAURI__.core, not window.__TAURI__ directly
-const invoke = window.__TAURI__.core.invoke;
-const event  = window.__TAURI__.event;
+const invoke = (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) || (async (cmd, args) => {
+  console.log(`[Mock Invoke] ${cmd}`, args);
+  if (cmd === 'get_battery_graph_data') {
+    return [
+      { label: "Jun 1 10:15", left_start: 90, left_end: 80, right_start: 92, right_end: 82, case_start: 70, case_end: 70, duration_mins: 35 },
+      { label: "Jun 2 12:30", left_start: 80, left_end: 65, right_start: 82, right_end: 66, case_start: 70, case_end: 65, duration_mins: 45 },
+      { label: "Jun 3 09:00", left_start: 100, left_end: 50, right_start: 100, right_end: 48, case_start: 100, case_end: 85, duration_mins: 120 },
+      { label: "Jun 4 18:20", left_start: 50, left_end: 35, right_start: 48, right_end: 33, case_start: 85, case_end: 85, duration_mins: 40 },
+      { label: "Jun 5 11:10", left_start: 85, left_end: 70, right_start: 83, right_end: 68, case_start: 85, case_end: 80, duration_mins: 55 }
+    ];
+  }
+  if (cmd === 'get_paired_devices') return ["CMF Buds 2a", "Nothing Ear (2)"];
+  if (cmd === 'get_battery_interval') return 10;
+  if (cmd === 'get_battery_step') return 5;
+  if (cmd === 'get_snapshot') return { connected: true, playback: true };
+  return [];
+});
+const event  = window.__TAURI__ && window.__TAURI__.event;
 
 // ── Preferences State ──────────────────────────────────────────────────────────
 let currentGoal = parseFloat(localStorage.getItem('playback-goal') || '2.0');
 let notificationsEnabled = localStorage.getItem('notifications-enabled') !== 'false';
 let currentDeviceName = localStorage.getItem('target-device') || 'CMF Buds 2a';
+let batteryPollIntervalSec = 10;
 
 // Send initial device name to backend
 invoke('set_device_name', { name: currentDeviceName }).catch(console.error);
@@ -18,6 +35,7 @@ let lastSessPlay = 0;
 let lastConnected = false;
 let lastPlaying = false;
 let lastGoalMet = false;
+let lastBatteryUpdateAt = Number(localStorage.getItem('last-battery-update-at') || 0);
 let pulseFactor = 0;
 let animationFrameId = null;
 let mousePos = null;
@@ -102,7 +120,8 @@ async function initBatteryIntervalSelect() {
 
   try {
     const val = await invoke('get_battery_interval');
-    select.value = val.toString();
+    batteryPollIntervalSec = Number(val) || 10;
+    select.value = String(batteryPollIntervalSec);
   } catch (e) {
     console.error('get_battery_interval failed', e);
   }
@@ -110,6 +129,7 @@ async function initBatteryIntervalSelect() {
   select.addEventListener('change', async (e) => {
     const secs = parseInt(e.target.value);
     if (!isNaN(secs)) {
+      batteryPollIntervalSec = secs;
       try {
         await invoke('set_battery_interval', { secs });
       } catch (err) {
@@ -120,6 +140,31 @@ async function initBatteryIntervalSelect() {
 }
 
 initBatteryIntervalSelect();
+
+async function initBatteryStepSelect() {
+  const select = document.getElementById('battery-step-select');
+  if (!select) return;
+
+  try {
+    const val = await invoke('get_battery_step');
+    select.value = val.toString();
+  } catch (e) {
+    console.error('get_battery_step failed', e);
+  }
+
+  select.addEventListener('change', async (e) => {
+    const step = parseInt(e.target.value);
+    if (!isNaN(step)) {
+      try {
+        await invoke('set_battery_step', { step });
+      } catch (err) {
+        console.error('set_battery_step failed', err);
+      }
+    }
+  });
+}
+
+initBatteryStepSelect();
 
 // Check build mode (debug vs release) to show/hide debug tag
 async function checkBuildMode() {
@@ -454,6 +499,120 @@ function animationLoop() {
 }
 animationLoop();
 
+// Helper to format duration text nicely
+function fmtDurText(secs) {
+  if (secs < 60) return `${Math.floor(secs)}s`;
+  const m = Math.floor(secs / 60);
+  if (m < 60) return `${m}m ${Math.floor(secs % 60)}s`;
+  const h = Math.floor(m / 60);
+  const leftM = m % 60;
+  return `${h}h ${leftM}m`;
+}
+
+// ── Live Dashboard Extras ───────────────────────────────────────────────────────
+async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay) {
+  const appsContainer = document.getElementById('live-apps-container');
+  const factsText = document.getElementById('live-facts-text');
+
+  if (!appsContainer || !factsText) return;
+
+  if (!connected) {
+    appsContainer.innerHTML = '<div style="color: var(--muted); font-size: 13px; font-style: italic; text-align: center;">Nothing playing right now</div>';
+    factsText.innerHTML = '<span style="color: var(--muted); font-style: italic;">Connect your earbuds to see live session insights here.</span>';
+    return;
+  }
+
+  // 1. Now Playing Audio Sources
+  try {
+    const activeApps = await invoke('get_active_audio_apps');
+    if (activeApps && activeApps.length > 0) {
+      appsContainer.innerHTML = '';
+      activeApps.forEach(appName => {
+        const div = document.createElement('div');
+        div.style.display = 'flex';
+        div.style.alignItems = 'center';
+        div.style.gap = '8px';
+        div.style.padding = '8px 12px';
+        div.style.background = 'var(--bg3)';
+        div.style.borderRadius = '6px';
+        div.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg>
+          <span style="font-size: 13px; color: var(--text);">${typeof bdFmtAppName === 'function' ? bdFmtAppName(appName) : appName}</span>
+        `;
+        appsContainer.appendChild(div);
+      });
+    } else {
+      appsContainer.innerHTML = '<div style="color: var(--muted); font-size: 13px; font-style: italic; text-align: center;">Nothing playing right now</div>';
+    }
+  } catch(e) {
+    console.error('get_active_audio_apps failed', e);
+  }
+
+  // 2. Session Quick Facts
+  try {
+    const sessions = await invoke('get_sessions');
+    if (sessions && sessions.length > 0) {
+      const currentSession = sessions[0];
+      const connTime = fmtDurText(currentSession.connected_secs);
+      
+      let batteryDropText = '';
+      if (batteryInfo) {
+        const startBat = currentSession.bat_left_connect;
+        const currentBat = batteryInfo.left;
+        if (startBat != null && currentBat != null) {
+          const drop = startBat - currentBat;
+          if (drop > 0) {
+            batteryDropText = ` The battery has dropped by <strong>${drop}%</strong> since connection.`;
+          } else if (drop < 0) {
+            batteryDropText = ` The battery has charged by <strong>${Math.abs(drop)}%</strong> since connection.`;
+          } else {
+            batteryDropText = ` The battery level hasn't changed since connection.`;
+          }
+        }
+      }
+      
+      factsText.innerHTML = `You've been connected for <strong>${connTime}</strong> in this session.${batteryDropText}`;
+    }
+  } catch(e) {
+    console.error('get_sessions failed in extras', e);
+  }
+
+  // 3. Estimated Time Left
+  const estText = document.getElementById('live-est-time');
+  if (estText) {
+    if (batteryInfo && batteryInfo.left != null) {
+      // Assume 6 hours (360 minutes) for 100% battery
+      const totalMins = Math.round(batteryInfo.left * 3.6);
+      const h = Math.floor(totalMins / 60);
+      const m = totalMins % 60;
+      estText.innerHTML = `≈ ${h}h ${m}m<div style="color: var(--muted); font-size: 13px; font-weight: 400; font-family: 'Inter', sans-serif; margin-top: 4px;">based on ${batteryInfo.left}%</div>`;
+    } else {
+      estText.innerHTML = `<span style="color: var(--muted); font-size: 14px; font-weight: 400; font-family: 'Inter', sans-serif;">—</span>`;
+    }
+  }
+
+  // 4. Daily Goal Progress
+  const goalTargetSecs = currentGoal * 3600;
+  const progressPct = Math.min(100, (totalTodayPlay / goalTargetSecs) * 100);
+  
+  const goalValEl  = document.getElementById('live-goal-val');
+  const goalTargetEl = document.getElementById('live-goal-target');
+  const goalBarEl  = document.getElementById('live-goal-bar');
+  const goalPctEl  = document.getElementById('live-goal-pct');
+
+  if (goalValEl && goalTargetEl && goalBarEl) {
+    goalValEl.textContent = fmtDurText(totalTodayPlay);
+    goalTargetEl.textContent = `${currentGoal}h`;
+    goalBarEl.style.width = `${progressPct}%`;
+    if (progressPct >= 100) {
+      goalBarEl.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)'; // Gold if met
+    } else {
+      goalBarEl.style.background = 'linear-gradient(90deg, var(--accent), #8b5cf6)';
+    }
+    if (goalPctEl) goalPctEl.textContent = `${Math.round(progressPct)}%`;
+  }
+}
+
 // ── Snapshot refresh ──────────────────────────────────────────────────────────
 async function refreshSnapshot() {
   let snap;
@@ -537,6 +696,9 @@ async function refreshSnapshot() {
     title.style.color = 'var(--muted)';
     desc.textContent  = `${currentDeviceName} is out of range or off`;
   }
+
+  // Update Live Dashboard Extras
+  updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay);
 
   // Stats page
   document.getElementById('s-today-conn').textContent  = fmtH(today.connected);
@@ -740,6 +902,44 @@ function drawDailyChart(history) {
   });
 }
 
+function formatBatteryAgo(ms) {
+  if (!ms) return '0 sec ago';
+
+  const seconds = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  const interval = Math.max(1, batteryPollIntervalSec || 10);
+  const stepSeconds = seconds < 60 ? Math.floor(seconds / interval) * interval : Math.floor(seconds / 60) * 60;
+
+  if (stepSeconds < 60) {
+    return `${stepSeconds} sec${stepSeconds === 1 ? '' : 's'} ago`;
+  }
+
+  const minutes = Math.floor(stepSeconds / 60);
+  if (minutes < 60) {
+    return `${minutes} min${minutes === 1 ? '' : 's'} ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours} hr${hours === 1 ? '' : 's'} ${minutes % 60} min ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
+function updateBatteryFreshnessLabel() {
+  const badge = document.getElementById('bat-last-updated');
+  if (!badge) return;
+
+  if (!lastBatteryUpdateAt) {
+    badge.style.display = 'none';
+    return;
+  }
+
+  badge.style.display = 'inline-flex';
+  badge.textContent = `Battery Last Updated ${formatBatteryAgo(lastBatteryUpdateAt)}`;
+}
+
 function updateBatteryUI(batteryInfo) {
   const card = document.getElementById('battery-card');
   if (!card) return;
@@ -750,6 +950,8 @@ function updateBatteryUI(batteryInfo) {
   let isLive = false;
   if (batteryInfo) {
     isLive = true;
+    lastBatteryUpdateAt = batteryInfo.updated_at || Date.now();
+    localStorage.setItem('last-battery-update-at', String(lastBatteryUpdateAt));
     localStorage.setItem('last-battery-info', JSON.stringify(batteryInfo));
   } else {
     const cached = localStorage.getItem('last-battery-info');
@@ -771,6 +973,8 @@ function updateBatteryUI(batteryInfo) {
     }
     titleEl.textContent = name;
   }
+
+  updateBatteryFreshnessLabel();
 
   // Update subtitle status
   const subEl = document.getElementById('battery-status-sub');
@@ -838,9 +1042,15 @@ function fmtSessBattery(r) {
   const hasDisc = r.bat_left_disc !== null || r.bat_right_disc !== null || r.bat_case_disc !== null;
   if (!hasConnect && !hasDisc) return '—';
 
+  const interrupted = r.interrupted === 1 || r.interrupted === true;
+
   const formatBud = (conn, disc) => {
     if (conn === null && disc === null) return '—';
     const connStr = conn !== null ? `${conn}%` : '—';
+    // If disc is missing but session was interrupted, use conn as last-known value
+    if (disc === null && interrupted && conn !== null) {
+      return `${connStr} → <span style="color:#f87171;font-size:0.7rem;">${conn}% (last)</span>`;
+    }
     const discStr = disc !== null ? `${disc}%` : '—';
     return `${connStr} → ${discStr}`;
   };
@@ -863,13 +1073,16 @@ async function loadHistory() {
     const tr = document.createElement('tr');
     const start = r.session_start.replace('T', '  ').slice(0, 21);
     const end   = r.session_end ? r.session_end.replace('T', '  ').slice(0, 21) : '—';
+    const interrupted = r.interrupted === 1 || r.interrupted === true;
+    const redStyle = interrupted ? 'color:#f87171;' : '';
     tr.innerHTML = `
-      <td>${start}</td>
-      <td>${end}</td>
-      <td>${fmtH(r.connected_secs)}</td>
-      <td style="color:var(--green)">${fmtH(r.playback_secs)}</td>
+      <td style="${redStyle}">${start}${interrupted ? ' ⚠' : ''}</td>
+      <td style="${redStyle}">${end}</td>
+      <td style="${redStyle}">${fmtH(r.connected_secs)}</td>
+      <td style="${redStyle || 'color:var(--green)'}">${fmtH(r.playback_secs)}</td>
       <td>${fmtSessBattery(r)}</td>
     `;
+    if (interrupted) tr.title = 'Session was interrupted (app closed unexpectedly)';
     tbody.appendChild(tr);
   });
 }
@@ -1056,7 +1269,8 @@ function bdRenderList() {
     const date = bdFmtDate(s.session_start);
     const conn = bdFmtDur(s.connected_secs).padEnd(10, '\u00A0');
     const play = bdFmtDur(s.playback_secs);
-    opt.textContent = `${date}\u00A0\u00A0│\u00A0\u00A0⇄\u00A0Conn:\u00A0${conn}\u00A0\u00A0│\u00A0\u00A0▶\u00A0Play:\u00A0${play}`;
+    const tag  = (s.interrupted === 1 || s.interrupted === true) ? '\u00A0\u00A0⚠' : '';
+    opt.textContent = `${date}\u00A0\u00A0│\u00A0\u00A0⇄\u00A0Conn:\u00A0${conn}\u00A0\u00A0│\u00A0\u00A0▶\u00A0Play:\u00A0${play}${tag}`;
     if (s.id === prevId) opt.selected = true;
     picker.appendChild(opt);
   });
@@ -1120,7 +1334,18 @@ function bdRenderDetail(bd, container) {
   // Most used app
   const topApp = bd.app_totals.length > 0 ? bd.app_totals[0] : null;
 
+  const interruptedBanner = (s.interrupted === 1 || s.interrupted === true)
+    ? `<div style="background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.35);border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:18px;">⚠️</span>
+        <div>
+          <div style="color:#f87171;font-weight:600;font-size:13px;">Interrupted Session</div>
+          <div style="color:#fca5a5;font-size:11px;margin-top:2px;">The app was closed unexpectedly during this session. Times shown are the last recorded values before shutdown.</div>
+        </div>
+       </div>`
+    : '';
+
   container.innerHTML = `
+    ${interruptedBanner}
     <!-- ── Summary card ── -->
     <div class="card">
       <div class="bd-section-title">Session Summary</div>
@@ -1167,8 +1392,14 @@ function bdRenderDetail(bd, container) {
     </div>
 
     <!-- ── Battery drain curve ── -->
-    <div class="card" id="bd-bat-card" style="${(batL0 == null && batR0 == null) ? 'display:none' : ''}">
-      <div class="bd-section-title">Battery Drain Curve</div>
+    <div class="card" id="bd-bat-card" style="${(batL0 == null && batR0 == null && batC0 == null) ? 'display:none' : ''}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div class="bd-section-title" style="margin:0;">Battery Drain Curve</div>
+        <select id="bd-bat-series" class="input-field" style="width:180px;font-size:12px;padding:5px 10px;">
+          <option value="buds">Buds (Left + Right avg)</option>
+          <option value="case">Case</option>
+        </select>
+      </div>
       <div class="bd-battery-canvas-wrap">
         <canvas id="bd-bat-canvas"></canvas>
       </div>
@@ -1180,7 +1411,8 @@ function bdRenderDetail(bd, container) {
   bdRenderAppBars(bd.app_totals, s.playback_secs);
 
   // Render battery drain canvas
-  if (batL0 != null || batR0 != null) {
+  if (batL0 != null || batR0 != null || batC0 != null) {
+    window._bdLastSession = s;
     requestAnimationFrame(() => bdDrawBatteryCurve(s));
   }
 
@@ -1221,13 +1453,13 @@ function bdRenderAppBars(totals, sessionPlaySecs = 1) {
 }
 
 // ── Draw battery drain line chart on canvas ───────────────────────────────────
-function bdDrawBatteryCurve(s) {
+function bdDrawBatteryCurve(s, mode) {
   const canvas = document.getElementById('bd-bat-canvas');
   if (!canvas) return;
   const wrap = canvas.parentElement;
   const dpr = window.devicePixelRatio || 1;
   const W = wrap.clientWidth || 400;
-  const H = 140;
+  const H = 240;
   canvas.width  = W * dpr;
   canvas.height = H * dpr;
   canvas.style.width  = W + 'px';
@@ -1237,7 +1469,8 @@ function bdDrawBatteryCurve(s) {
   c.scale(dpr, dpr);
   c.clearRect(0, 0, W, H);
 
-  const padL = 38, padR = 16, padT = 12, padB = 28;
+  // Increased top/bottom padding so labels aren't clipped
+  const padL = 42, padR = 20, padT = 26, padB = 36;
   const chartW = W - padL - padR;
   const chartH = H - padT - padB;
 
@@ -1253,22 +1486,36 @@ function bdDrawBatteryCurve(s) {
     c.moveTo(padL, y);
     c.lineTo(padL + chartW, y);
     c.stroke();
-    c.fillText(pct + '%', padL - 4, y + 3);
+    c.fillText(pct + '%', padL - 6, y + 3.5);
   });
 
   // X labels
-  c.textAlign = 'center';
+  c.textAlign = 'left';
   c.fillStyle = '#888898';
   c.font = '10px "Segoe UI", sans-serif';
-  c.fillText('Start', padL, H - 6);
-  c.fillText('End', padL + chartW, H - 6);
+  c.fillText('Start', padL, H - 10);
+  c.textAlign = 'right';
+  c.fillText('End', padL + chartW, H - 10);
 
-  // Lines per earbud
-  const series = [
-    { label: 'L', v0: s.bat_left_connect,  v1: s.bat_left_disc,  color: '#6366f1' },
-    { label: 'R', v0: s.bat_right_connect, v1: s.bat_right_disc, color: '#4ade80' },
-    { label: 'C', v0: s.bat_case_connect,  v1: s.bat_case_disc,  color: '#fbbf24' },
-  ].filter(sr => sr.v0 != null || sr.v1 != null);
+  // Determine series based on dropdown mode
+  const resolvedMode = mode || document.getElementById('bd-bat-series')?.value || 'buds';
+  let series;
+  if (resolvedMode === 'case') {
+    series = [
+      { label: 'Case', v0: s.bat_case_connect, v1: s.bat_case_disc, color: '#fbbf24' },
+    ].filter(sr => sr.v0 != null || sr.v1 != null);
+  } else {
+    // Buds: show L and R individually, with an avg line
+    const L0 = s.bat_left_connect, L1 = s.bat_left_disc;
+    const R0 = s.bat_right_connect, R1 = s.bat_right_disc;
+    const avgStart = (L0 != null && R0 != null) ? Math.round((L0 + R0) / 2) : (L0 ?? R0);
+    const avgEnd   = (L1 != null && R1 != null) ? Math.round((L1 + R1) / 2) : (L1 ?? R1);
+    series = [
+      { label: 'L',   v0: L0,       v1: L1,       color: '#6366f1' },
+      { label: 'R',   v0: R0,       v1: R1,       color: '#4ade80' },
+      { label: 'Avg', v0: avgStart, v1: avgEnd,   color: '#f97316', dashed: true },
+    ].filter(sr => sr.v0 != null || sr.v1 != null);
+  }
 
   series.forEach(sr => {
     const x0 = padL, x1 = padL + chartW;
@@ -1277,40 +1524,61 @@ function bdDrawBatteryCurve(s) {
     const y0 = padT + chartH - (start / 100) * chartH;
     const y1 = padT + chartH - (end   / 100) * chartH;
 
-    // Gradient fill
-    const grad = c.createLinearGradient(x0, y0, x1, y1);
-    grad.addColorStop(0, sr.color + '44');
-    grad.addColorStop(1, sr.color + '00');
-    c.beginPath();
-    c.moveTo(x0, y0);
-    c.lineTo(x1, y1);
-    c.lineTo(x1, padT + chartH);
-    c.lineTo(x0, padT + chartH);
-    c.closePath();
-    c.fillStyle = grad;
-    c.fill();
+    // Gradient fill (skip for avg/dashed)
+    if (!sr.dashed) {
+      const grad = c.createLinearGradient(x0, y0, x1, y1);
+      grad.addColorStop(0, sr.color + '44');
+      grad.addColorStop(1, sr.color + '00');
+      c.beginPath();
+      c.moveTo(x0, y0);
+      c.lineTo(x1, y1);
+      c.lineTo(x1, padT + chartH);
+      c.lineTo(x0, padT + chartH);
+      c.closePath();
+      c.fillStyle = grad;
+      c.fill();
+    }
 
     // Line
     c.beginPath();
     c.moveTo(x0, y0);
     c.lineTo(x1, y1);
     c.strokeStyle = sr.color;
-    c.lineWidth = 2;
+    c.lineWidth = sr.dashed ? 1.5 : 2;
+    if (sr.dashed) {
+      c.setLineDash([6, 4]);
+    } else {
+      c.setLineDash([]);
+    }
     c.stroke();
+    c.setLineDash([]);
 
-    // Dots
+    // Dots + labels (only for non-avg series or avg when it's the only one)
+    const showLabel = !sr.dashed || series.length === 1;
     [{ x: x0, y: y0, v: start }, { x: x1, y: y1, v: end }].forEach(pt => {
       c.beginPath();
-      c.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+      c.arc(pt.x, pt.y, sr.dashed ? 3 : 4, 0, Math.PI * 2);
       c.fillStyle = sr.color;
       c.fill();
-      c.fillStyle = sr.color;
-      c.font = 'bold 9px "Segoe UI", sans-serif';
-      c.textAlign = 'center';
-      c.fillText(sr.label + ':' + pt.v + '%', pt.x, pt.y - 8);
+      if (showLabel) {
+        c.fillStyle = sr.color;
+        c.font = 'bold 9px "Segoe UI", sans-serif';
+        c.textAlign = 'center';
+        // Clamp label inside top padding
+        const labelY = Math.max(padT - 6, pt.y - 10);
+        c.fillText(sr.label + ':' + pt.v + '%', pt.x, labelY);
+      }
     });
   });
 }
+
+// Wire the series dropdown to redraw on change (stored on window for access after render)
+window._bdLastSession = null;
+document.addEventListener('change', e => {
+  if (e.target.id === 'bd-bat-series' && window._bdLastSession) {
+    requestAnimationFrame(() => bdDrawBatteryCurve(window._bdLastSession));
+  }
+});
 
 // ── Export session data ───────────────────────────────────────────────────────
 async function bdExport(sessionId, format) {
@@ -1384,10 +1652,28 @@ async function loadBatteryGraph() {
       liveLeft = batteryInfo.left;
       liveRight = batteryInfo.right;
       liveCase = batteryInfo.case;
+      // Use the global connection state tracker (wasConnected is set by the poll loop)
+      // Fallback: check status text but use exact match, not includes(), to avoid
+      // matching "Disconnected (Last Known)" which also contains "Connected"
       const statusEl = document.getElementById('battery-status-sub');
-      isLive = statusEl && statusEl.textContent.includes('Connected');
+      const statusText = statusEl ? statusEl.textContent.trim() : '';
+      isLive = statusText === 'Connected' || (typeof lastConnected !== 'undefined' && lastConnected);
     } catch(e) {}
   }
+
+  // Get battery step size from backend
+  let batteryStep = 1;
+  try {
+    batteryStep = await invoke('get_battery_step');
+  } catch (e) {
+    console.error('get_battery_step failed', e);
+  }
+
+  const roundToStep = (val) => {
+    if (val == null) return null;
+    if (batteryStep <= 1) return val;
+    return Math.round(val / batteryStep) * batteryStep;
+  };
 
   // Fetch data
   let rawData = [];
@@ -1414,40 +1700,43 @@ async function loadBatteryGraph() {
   let categories = [];
   let series = [];
 
-  const greenColor = '#4ade80';
-  const blueColor = '#60a5fa';
-  const purpleColor = '#a78bfa';
-  const whiteColor = '#ffffff';
+  const greenColor  = '#4ade80'; // Left Bud  — green
+  const blueColor   = '#60a5fa'; // Right Bud — blue
+  const purpleColor = '#a78bfa'; // Case       — purple
+  const whiteColor  = '#fbbf24'; // Average    — amber (high contrast on dark)
 
   let colors = [];
 
   if (duration === 'session') {
     const pt = rawData[0];
-    const leftE = pt.left_end ?? (isLive ? liveLeft : pt.left_start);
-    const rightE = pt.right_end ?? (isLive ? liveRight : pt.right_start);
-    const caseE = pt.case_end ?? (isLive ? liveCase : pt.case_start);
+    const leftE = roundToStep(pt.left_end ?? (isLive ? liveLeft : pt.left_start));
+    const rightE = roundToStep(pt.right_end ?? (isLive ? liveRight : pt.right_start));
+    const caseE = roundToStep(pt.case_end ?? (isLive ? liveCase : pt.case_start));
+    const ptLeftStart = roundToStep(pt.left_start);
+    const ptRightStart = roundToStep(pt.right_start);
+    const ptCaseStart = roundToStep(pt.case_start);
 
     categories = ['Start Connection', 'Current / Disconnect'];
 
     if (item === 'left') {
-      series = [{ name: 'Left Bud', data: [pt.left_start ?? 0, leftE ?? 0] }];
+      series = [{ name: 'Left Bud', data: [ptLeftStart ?? 0, leftE ?? 0] }];
       colors = [greenColor];
     } else if (item === 'right') {
-      series = [{ name: 'Right Bud', data: [pt.right_start ?? 0, rightE ?? 0] }];
+      series = [{ name: 'Right Bud', data: [ptRightStart ?? 0, rightE ?? 0] }];
       colors = [blueColor];
     } else if (item === 'case') {
-      series = [{ name: 'Case', data: [pt.case_start ?? 0, caseE ?? 0] }];
+      series = [{ name: 'Case', data: [ptCaseStart ?? 0, caseE ?? 0] }];
       colors = [purpleColor];
     } else if (item === 'avg') {
-      const startAvg = ((pt.left_start ?? 0) + (pt.right_start ?? 0)) / 2;
-      const endAvg = ((leftE ?? 0) + (rightE ?? 0)) / 2;
+      const startAvg = roundToStep(((pt.left_start ?? 0) + (pt.right_start ?? 0)) / 2);
+      const endAvg = roundToStep(((leftE ?? 0) + (rightE ?? 0)) / 2);
       series = [{ name: 'Average Bud', data: [startAvg, endAvg] }];
       colors = [whiteColor];
     } else { // all
       series = [
-        { name: 'Left Bud', data: [pt.left_start ?? 0, leftE ?? 0] },
-        { name: 'Right Bud', data: [pt.right_start ?? 0, rightE ?? 0] },
-        { name: 'Case', data: [pt.case_start ?? 0, caseE ?? 0] }
+        { name: 'Left Bud', data: [ptLeftStart ?? 0, leftE ?? 0] },
+        { name: 'Right Bud', data: [ptRightStart ?? 0, rightE ?? 0] },
+        { name: 'Case', data: [ptCaseStart ?? 0, caseE ?? 0] }
       ];
       colors = [greenColor, blueColor, purpleColor];
     }
@@ -1456,8 +1745,8 @@ async function loadBatteryGraph() {
     categories = rawData.map(pt => pt.label);
 
     const getDrain = (start, end, liveVal) => {
-      const s = start;
-      const e = end ?? (isLive ? liveVal : start);
+      const s = roundToStep(start);
+      const e = roundToStep(end ?? (isLive ? liveVal : start));
       if (s === null || e === null) return 0;
       return Math.max(0, s - e);
     };
@@ -1465,7 +1754,7 @@ async function loadBatteryGraph() {
     const leftDrains = rawData.map(pt => getDrain(pt.left_start, pt.left_end, liveLeft));
     const rightDrains = rawData.map(pt => getDrain(pt.right_start, pt.right_end, liveRight));
     const caseDrains = rawData.map(pt => getDrain(pt.case_start, pt.case_end, liveCase));
-    const avgDrains = rawData.map((pt, idx) => (leftDrains[idx] + rightDrains[idx]) / 2);
+    const avgDrains = rawData.map((pt, idx) => roundToStep((leftDrains[idx] + rightDrains[idx]) / 2));
 
     if (chartType === 'pie' || chartType === 'donut') {
       const totalLeft = leftDrains.reduce((a, b) => a + b, 0);
@@ -1544,6 +1833,9 @@ async function loadBatteryGraph() {
     },
     colors: colors,
     theme: { mode: 'dark' },
+    dataLabels: {
+      enabled: false
+    },
     stroke: {
       show: true,
       curve: 'smooth',
@@ -1630,13 +1922,56 @@ async function loadBatteryGraph() {
       categories: categories,
       axisBorder: { show: false },
       axisTicks: { show: false },
+      tickAmount: categories.length > 10 ? 10 : undefined,
       labels: {
-        style: { colors: '#888898', fontSize: '11px' }
+        style: { colors: '#888898', fontSize: '11px' },
+        hideOverlappingLabels: true,
+        trim: true
       }
     };
+
+    // Calculate dynamic axis range and clean ticks based on data and batteryStep
+    let yMin = 0;
+    let yMax = undefined;
+    let tickAmount = undefined;
+
+    let allVals = [];
+    series.forEach(s => {
+      s.data.forEach(val => {
+        if (val != null) allVals.push(val);
+      });
+    });
+
+    if (allVals.length > 0) {
+      let minVal = Math.min(...allVals);
+      let maxVal = Math.max(...allVals);
+
+      if (duration === 'session') {
+        // Always show full range (0 - 100%) for battery levels, with clean 20% intervals (0%, 20%, 40%, 60%, 80%, 100%)
+        yMin = 0;
+        yMax = 100;
+        tickAmount = 5;
+      } else {
+        // Delta drain range (0 to Max + 2 steps headroom)
+        yMin = 0;
+        const rawTop = Math.ceil(maxVal / batteryStep) * batteryStep;
+        // Add 2 extra step-intervals above the max so the chart isn't cramped
+        yMax = rawTop + 2 * batteryStep;
+        // Auto-merge intervals: if > 8 ticks, double the effective step until we're at ≤8
+        let effectiveStep = batteryStep;
+        while ((yMax / effectiveStep) > 8) {
+          effectiveStep *= 2;
+          // Re-snap yMax to the larger step
+          yMax = Math.ceil((rawTop + 2 * batteryStep) / effectiveStep) * effectiveStep;
+        }
+        tickAmount = Math.round(yMax / effectiveStep);
+      }
+    }
+
     options.yaxis = {
-      min: 0,
-      max: duration === 'session' ? 100 : undefined,
+      min: yMin,
+      max: yMax,
+      tickAmount: tickAmount,
       labels: {
         style: { colors: '#888898', fontSize: '11px' },
         formatter: function (val) {
@@ -1675,6 +2010,3 @@ async function loadBatteryGraph() {
 document.getElementById('graph-duration')?.addEventListener('change', loadBatteryGraph);
 document.getElementById('graph-item')?.addEventListener('change', loadBatteryGraph);
 document.getElementById('graph-type')?.addEventListener('change', loadBatteryGraph);
-
-
-

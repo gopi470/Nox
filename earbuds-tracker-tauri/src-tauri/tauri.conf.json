@@ -1,5 +1,5 @@
 {
-  "productName": "EarbudsTracker",
+  "productName": "Nox",
   "version": "2.0.0",
   "identifier": "com.earbudstracker.app",
   "build": {
@@ -10,7 +10,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "EarbudsTracker",
+        "title": "Nox",
         "width": 900,
         "height": 620,
         "minWidth": 800,

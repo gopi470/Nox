@@ -57,6 +57,7 @@ fn conn() -> &'static Mutex<Connection> {
             "ALTER TABLE sessions ADD COLUMN bat_case_disc      INTEGER",
             "ALTER TABLE sessions ADD COLUMN firmware           TEXT",
             "ALTER TABLE sessions ADD COLUMN notes              TEXT",
+            "ALTER TABLE sessions ADD COLUMN interrupted        INTEGER DEFAULT 0",
         ];
         for sql in &migrations {
             c.execute(sql, []).ok(); // silently ignored if column already exists
@@ -67,6 +68,7 @@ fn conn() -> &'static Mutex<Connection> {
 
 pub fn init_db() {
     let _ = conn(); // trigger OnceCell init
+    cleanup_unclosed_sessions();
 }
 
 // ── Session management ──────────────────────────────────────────────────────
@@ -184,6 +186,7 @@ pub struct SessionRow {
     pub bat_right_disc:    Option<i64>,
     pub bat_case_disc:     Option<i64>,
     pub firmware:          Option<String>,
+    pub interrupted:       i64,
 }
 
 pub fn get_recent_sessions(limit: usize) -> Vec<SessionRow> {
@@ -192,7 +195,7 @@ pub fn get_recent_sessions(limit: usize) -> Vec<SessionRow> {
         .prepare(
             "SELECT id, session_start, COALESCE(session_end,''), connected_secs, playback_secs,
                     bat_left_connect, bat_right_connect, bat_case_connect,
-                    bat_left_disc, bat_right_disc, bat_case_disc, firmware
+                    bat_left_disc, bat_right_disc, bat_case_disc, firmware, interrupted
              FROM sessions ORDER BY id DESC LIMIT ?1",
         )
         .expect("prepare failed");
@@ -210,6 +213,7 @@ pub fn get_recent_sessions(limit: usize) -> Vec<SessionRow> {
             bat_right_disc:    row.get(9)?,
             bat_case_disc:     row.get(10)?,
             firmware:          row.get(11)?,
+            interrupted:       row.get(12)?,
         })
     })
     .unwrap()
@@ -404,6 +408,7 @@ pub struct SessionBreakdownRow {
     pub bat_right_disc:    Option<i64>,
     pub bat_case_disc:     Option<i64>,
     pub notes: Option<String>,
+    pub interrupted:       i64,
 }
 
 pub fn get_sessions_for_breakdown(limit: usize) -> Vec<SessionBreakdownRow> {
@@ -412,7 +417,7 @@ pub fn get_sessions_for_breakdown(limit: usize) -> Vec<SessionBreakdownRow> {
         .prepare(
             "SELECT id, session_start, COALESCE(session_end,''), connected_secs, playback_secs,
                     bat_left_connect, bat_right_connect, bat_case_connect,
-                    bat_left_disc, bat_right_disc, bat_case_disc, notes
+                    bat_left_disc, bat_right_disc, bat_case_disc, notes, interrupted
              FROM sessions ORDER BY id DESC LIMIT ?1",
         )
         .expect("prepare failed");
@@ -430,6 +435,7 @@ pub fn get_sessions_for_breakdown(limit: usize) -> Vec<SessionBreakdownRow> {
             bat_right_disc:    row.get(9)?,
             bat_case_disc:     row.get(10)?,
             notes:             row.get(11)?,
+            interrupted:       row.get(12)?,
         })
     })
     .unwrap()
@@ -552,4 +558,65 @@ pub fn get_battery_graph_data(duration: &str) -> Vec<BatteryGraphPoint> {
     .unwrap()
     .filter_map(|r| r.ok())
     .collect()
+}
+
+pub fn cleanup_unclosed_sessions() {
+    let db = conn().lock();
+    let mut stmt = db.prepare(
+        "SELECT id, session_start, connected_secs, playback_secs FROM sessions WHERE session_end IS NULL OR session_end = ''"
+    ).expect("Failed to prepare cleanup query");
+    
+    struct Unclosed {
+        id: i64,
+        start_str: String,
+        connected_secs: f64,
+        playback_secs: f64,
+    }
+
+    let rows: Vec<Unclosed> = stmt.query_map([], |row| {
+        Ok(Unclosed {
+            id: row.get(0)?,
+            start_str: row.get(1)?,
+            connected_secs: row.get(2)?,
+            playback_secs: row.get(3)?,
+        })
+    }).unwrap().filter_map(|r| r.ok()).collect();
+
+    drop(stmt);
+
+    for s in rows {
+        let start_dt = match NaiveDateTime::parse_from_str(&s.start_str, "%Y-%m-%dT%H:%M:%S") {
+            Ok(dt) => dt,
+            Err(_) => continue,
+        };
+        let end_dt = start_dt + chrono::Duration::seconds(s.connected_secs as i64);
+        let end_str = end_dt.format("%Y-%m-%dT%H:%M:%S").to_string();
+
+        db.execute(
+            "UPDATE sessions SET session_end = ?1, interrupted = 1 WHERE id = ?2",
+            params![end_str, s.id]
+        ).ok();
+
+        let day = start_dt.date();
+        db.execute(
+            "INSERT INTO daily_stats (day, connected_secs, playback_secs) VALUES (?1,?2,?3)
+             ON CONFLICT(day) DO UPDATE SET
+                 connected_secs = connected_secs + excluded.connected_secs,
+                 playback_secs  = playback_secs  + excluded.playback_secs",
+            params![day.format("%Y-%m-%d").to_string(), s.connected_secs, s.playback_secs],
+        ).ok();
+        
+        let cutoff = end_str.clone();
+        db.execute(
+            "UPDATE app_audio_events
+             SET end_ts = ?1,
+                 duration_secs = (
+                     CAST((julianday(?1) - julianday(start_ts)) * 86400.0 AS REAL)
+                 )
+             WHERE session_id = ?2 AND end_ts IS NULL",
+            params![cutoff, s.id],
+        ).ok();
+
+        println!("Cleaned up interrupted session id={} (Conn: {}s, Play: {}s)", s.id, s.connected_secs, s.playback_secs);
+    }
 }

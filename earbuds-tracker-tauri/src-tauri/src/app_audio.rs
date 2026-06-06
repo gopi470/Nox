@@ -121,6 +121,11 @@ impl AppAudioMonitor {
 
 #[cfg(target_os = "windows")]
 pub fn get_active_app_peaks(target_device: &str) -> Vec<String> {
+    get_active_app_peaks_internal(Some(target_device))
+}
+
+#[cfg(target_os = "windows")]
+fn get_active_app_peaks_internal(target_device: Option<&str>) -> Vec<String> {
     use windows::{
         core::Interface,
         Win32::{
@@ -185,8 +190,10 @@ pub fn get_active_app_peaks(target_device: &str) -> Vec<String> {
             let friendly = psz.to_string().unwrap_or_default().to_lowercase();
             CoTaskMemFree(Some(psz.0 as *const _));
 
-            if !friendly.contains(target_device) {
-                continue;
+            if let Some(tgt) = target_device {
+                if !friendly.contains(tgt) {
+                    continue;
+                }
             }
 
             // Activate IAudioSessionManager2 on this device
@@ -273,5 +280,21 @@ pub fn get_active_app_peaks(target_device: &str) -> Vec<String> {
 
 #[cfg(not(target_os = "windows"))]
 pub fn get_active_app_peaks(_target_device: &str) -> Vec<String> {
+    vec![]
+}
+
+// ── All-endpoints variant (used by Dashboard Now Playing) ────────────────────
+// Same as get_active_app_peaks but scans ALL active render endpoints, not just
+// the one matching the target device name. This is more reliable for the UI
+// because Windows may name the Bluetooth endpoint differently at the WASAPI level.
+
+#[cfg(target_os = "windows")]
+pub fn get_all_app_peaks() -> Vec<String> {
+    // Reuse the same logic but pass an empty target so the device filter always matches
+    get_active_app_peaks_internal(None)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn get_all_app_peaks() -> Vec<String> {
     vec![]
 }

@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>EarbudsTracker</title>
+  <title>Nox</title>
   <link rel="stylesheet" href="styles.css" />
-  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+  <script src="apexcharts.min.js"></script>
 </head>
 <body>
   <div class="shell">
@@ -18,7 +18,7 @@
             <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
           </svg>
         </span>
-        <span class="brand-name">EarbudsTracker <span id="debug-tag" class="debug-tag" style="display: none;">Debug</span></span>
+        <span class="brand-name">No<span class="brand-x">X</span> <span id="debug-tag" class="debug-tag" style="display: none;">Debug</span></span>
       </div>
       <ul class="nav-list">
         <li class="nav-item active" data-page="dashboard">
@@ -120,13 +120,69 @@
             </div>
           </div>
         </div>
+
+        <div class="dashboard-extras" style="display: flex; gap: 20px; margin-top: 20px; align-items: stretch; flex-wrap: wrap;">
+          <div class="card" style="flex: 1; min-width: 250px; display: flex; flex-direction: column;">
+            <div class="status-title" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+              Now Playing
+            </div>
+            <div id="live-apps-container" style="display: flex; flex-direction: column; gap: 8px; flex: 1; justify-content: center; min-height: 60px;">
+              <div style="color: var(--muted); font-size: 13px; font-style: italic; text-align: center;">Nothing playing right now</div>
+            </div>
+          </div>
+          
+          <div class="card" style="flex: 1; min-width: 250px; display: flex; flex-direction: column;">
+            <div class="status-title" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--green);"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
+              Session Quick Facts
+            </div>
+            <div style="display: flex; flex-direction: column; flex: 1; justify-content: center; min-height: 60px;">
+              <div style="color: var(--text); font-size: 14px; line-height: 1.6;" id="live-facts-text">
+                <span style="color: var(--muted); font-style: italic;">Connect your earbuds to see live session insights here.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="flex: 1; min-width: 250px; display: flex; flex-direction: column;">
+            <div class="status-title" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #fbbf24;"><path d="M12 2v20"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+              Estimated Time Left
+            </div>
+            <div style="display: flex; flex-direction: column; flex: 1; justify-content: center; min-height: 60px; text-align: center;">
+              <div style="color: var(--text); font-size: 24px; font-weight: 600; font-family: monospace;" id="live-est-time">
+                <span style="color: var(--muted); font-size: 14px; font-weight: 400; font-family: 'Inter', sans-serif;">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <div class="status-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              Daily Goal Progress
+            </div>
+            <div style="font-size: 13px; color: var(--muted);"><span id="live-goal-val" style="color: var(--text); font-weight: 600;">0h 0m</span> / <span id="live-goal-target">3h</span></div>
+          </div>
+          <div style="position: relative; height: 18px; background: var(--bg3); border-radius: 9px; overflow: hidden; border: 1px solid var(--border);">
+            <div id="live-goal-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), #8b5cf6); border-radius: 9px; transition: width 0.6s ease; position: relative;"></div>
+            <div id="live-goal-pct" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.7); letter-spacing: 0.5px;">0%</div>
+          </div>
+        </div>
       </section>
 
       <!-- ── Battery Page ───────────────────────────────────────── -->
       <section class="page" id="page-battery">
-        <div class="page-header">
-          <h1 class="page-title">Battery</h1>
-          <p class="page-sub">Real-time level monitoring and status diagnostics</p>
+        <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
+          <div style="display: flex; flex-direction: column; min-width: 0;">
+            <h1 class="page-title">Battery</h1>
+            <p class="page-sub" style="margin: 0;">Real-time level monitoring and status diagnostics</p>
+          </div>
+          <span id="bat-last-updated" style="font-size: 11px; color: var(--muted); white-space: nowrap; display: none; margin-left: auto;">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:middle;margin-right:3px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Updated just now
+          </span>
         </div>
         
         <div class="battery-page-container">
@@ -183,54 +239,51 @@
           </div>
 
           <!-- Battery Analytics Card -->
-          <div class="card battery-analytics-card" style="margin-top: 24px; padding: 24px;">
-            <div class="analytics-header">
-              <div class="analytics-title-group">
-                <h2 class="analytics-title" style="margin: 0; font-size: 1.1rem; font-weight: 600; color: #ffffff;">Battery Analytics</h2>
-                <p class="analytics-subtitle" style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-muted, #888888);">Historical drain tracking and patterns</p>
+          <div class="card battery-analytics-card">
+            <div class="analytics-title-group">
+              <h2 class="analytics-title">Battery Analytics</h2>
+              <p class="analytics-subtitle">Historical drain tracking and patterns</p>
+            </div>
+            <div class="analytics-filters">
+              <div class="filter-group">
+                <label for="graph-duration">Duration</label>
+                <select id="graph-duration" class="filter-select">
+                  <option value="session">This Session</option>
+                  <option value="day">Today</option>
+                  <option value="week" selected>Week</option>
+                  <option value="month">Month</option>
+                </select>
               </div>
-              <div class="analytics-filters" style="display: flex; gap: 16px; margin-top: 16px; flex-wrap: wrap;">
-                <div class="filter-group" style="display: flex; flex-direction: column; gap: 4px;">
-                  <label for="graph-duration" style="font-size: 0.75rem; color: var(--text-muted, #888888); font-weight: 500;">Duration</label>
-                  <select id="graph-duration" class="filter-select">
-                    <option value="session">This Session</option>
-                    <option value="day">Today</option>
-                    <option value="week" selected>Week</option>
-                    <option value="month">Month</option>
-                  </select>
-                </div>
-                <div class="filter-group" style="display: flex; flex-direction: column; gap: 4px;">
-                  <label for="graph-item" style="font-size: 0.75rem; color: var(--text-muted, #888888); font-weight: 500;">Item</label>
-                  <select id="graph-item" class="filter-select">
-                    <option value="left">Left Bud</option>
-                    <option value="right">Right Bud</option>
-                    <option value="case">Case</option>
-                    <option value="avg">Average (L+R)</option>
-                    <option value="all" selected>All</option>
-                  </select>
-                </div>
-                <div class="filter-group" style="display: flex; flex-direction: column; gap: 4px;">
-                  <label for="graph-type" style="font-size: 0.75rem; color: var(--text-muted, #888888); font-weight: 500;">Chart Type</label>
-                  <select id="graph-type" class="filter-select">
-                    <option value="line" selected>Line Graph</option>
-                    <option value="area">Area Chart</option>
-                    <option value="bar">Bar Chart</option>
-                    <option value="pie">Pie Chart</option>
-                    <option value="donut">Donut Chart</option>
-                    <option value="radar">Radar Chart</option>
-                  </select>
-                </div>
+              <div class="filter-group">
+                <label for="graph-item">Item</label>
+                <select id="graph-item" class="filter-select">
+                  <option value="left">Left Bud</option>
+                  <option value="right">Right Bud</option>
+                  <option value="case">Case</option>
+                  <option value="avg">Average (L+R)</option>
+                  <option value="all" selected>All</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label for="graph-type">Chart Type</label>
+                <select id="graph-type" class="filter-select">
+                  <option value="line" selected>Line Graph</option>
+                  <option value="area">Area Chart</option>
+                  <option value="bar">Bar Chart</option>
+                  <option value="pie">Pie Chart</option>
+                  <option value="donut">Donut Chart</option>
+                  <option value="radar">Radar Chart</option>
+                </select>
               </div>
             </div>
-            
-            <div class="graph-wrapper" style="position: relative; margin-top: 20px; min-height: 280px; width: 100%;">
+            <div class="graph-wrapper">
               <div id="battery-graph-canvas"></div>
-              <div id="graph-empty-state" class="graph-empty-state" style="display: none; flex-direction: column; align-items: center; justify-content: center; min-height: 280px; text-align: center; color: var(--text-muted, #888888); gap: 12px;">
+              <div id="graph-empty-state" class="graph-empty-state">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.4;">
                   <path d="M3 3v18h18"/>
                   <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
                 </svg>
-                <p style="margin: 0; font-size: 0.9rem;">No battery log data found for this range.</p>
+                <p>No battery log data found for this range.</p>
               </div>
             </div>
           </div>
@@ -421,6 +474,19 @@
         <div class="card settings-card">
           <div class="settings-control-row">
             <div>
+              <div class="set-title">Battery Drain Interval</div>
+              <div class="set-desc">Matches the step size of earbud battery reporting (e.g. 5% jumps for CMF Buds 2a).</div>
+            </div>
+            <select id="battery-step-select" class="input-field" style="width: 180px;">
+              <option value="1">1%</option>
+              <option value="5" selected>5% (Recommended)</option>
+              <option value="10">10%</option>
+            </select>
+          </div>
+        </div>
+        <div class="card settings-card">
+          <div class="settings-control-row">
+            <div>
               <div class="set-title">Reset All Data</div>
               <div class="set-desc">Permanently wipe all session history and statistics. Requires Windows password confirmation. This cannot be undone.</div>
             </div>
@@ -437,11 +503,11 @@
         </div>
         <div class="card settings-card">
           <div>
-            <div class="set-title">About EarbudsTracker</div>
+            <div class="set-title">About Nox</div>
             <div class="set-desc">
               Version 2.0 — Rust + Tauri (WebView2)<br>
               Tracks Bluetooth connection state and audio playback times.<br>
-              Data stored in <code>%APPDATA%\EarbudsTracker\tracker.db</code>
+              Data stored in <code>%APPDATA%\EarbudsTracker\tracker.db</code> for compatibility.
             </div>
           </div>
         </div>

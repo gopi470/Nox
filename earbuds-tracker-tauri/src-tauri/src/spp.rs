@@ -33,6 +33,8 @@ pub struct BatteryInfo {
     pub left_charging:  bool,
     pub right_charging: bool,
     pub case_charging:  bool,
+    #[serde(default)]
+    pub updated_at:     Option<u64>,
 }
 
 // ── CRC-16 / IBM ─────────────────────────────────────────────────────────────
