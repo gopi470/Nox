@@ -4,7 +4,7 @@ This folder contains the Tauri (v2) desktop application codebase for **Nox**. It
 
 ---
 
-## 📂 Subfolder Structure
+## Subfolder Structure
 
 - `src/` - **Frontend Dashboard Application**
   - `index.html` - The dashboard core, containing pages (Dashboard, History, Statistics, Session Breakdown, Settings).
@@ -22,7 +22,7 @@ This folder contains the Tauri (v2) desktop application codebase for **Nox**. It
 
 ---
 
-## 🛠️ Tauri Commands API
+## Tauri Commands API
 
 The frontend invokes several backend methods defined in `src-tauri/src/lib.rs`:
 
