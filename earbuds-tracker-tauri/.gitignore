@@ -12,8 +12,7 @@ node_modules/
 dist/
 dist-ssr/
 src-tauri/target/
-src-tauri/gen/schemas/
-src-tauri/gen/*.json
+src-tauri/gen/
 
 # Local environment files
 *.local

@@ -1,0 +1,14 @@
+# OS and editor cruft
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+
+# Generic temporary and log files
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+

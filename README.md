@@ -6,6 +6,42 @@ Designed specifically for the **CMF Buds 2a** (with support for custom-named pai
 
 ---
 
+## Installation
+
+### Option 1: Download a prebuilt installer
+
+If you want to install Nox without building it yourself, download the latest Windows installer from:
+
+- [Latest GitHub Release](https://github.com/gopi470/EarBuds-Tracker/releases/latest)
+
+On the release page, look in the **Assets** section for a `.msi` or `.exe` installer if one is published for your platform.
+
+### Option 2: Build and install locally
+
+If you want to compile the app yourself:
+
+1. Install the prerequisites:
+   - Windows 10 or Windows 11
+   - Node.js
+   - Rust and Cargo
+   - AutoHotkey v2 if you want the optional launcher
+
+2. Clone the repository:
+   ```bash
+   git clone https://github.com/gopi470/EarBuds-Tracker.git
+   cd EarBuds-Tracker/earbuds-tracker-tauri
+   ```
+
+3. Install dependencies and build:
+   ```bash
+   npm install
+   npm run tauri build
+   ```
+
+4. After the build finishes, look in the Tauri output folder for the generated installer or package. The exact path depends on the target format you build, but it is typically under `src-tauri/target/release/bundle/`.
+
+---
+
 ## Key Features
 
 * **Real-time Battery Tracking**: Queries battery percentage (Left earbud, Right earbud, and Charging Case) and charging states using a custom implementation of the Serial Port Profile (SPP) protocol.
