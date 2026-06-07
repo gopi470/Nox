@@ -724,21 +724,20 @@ function buildRadarTooltipHtml(meta = {}) {
 
 function buildRadarBucketTooltipHtml(meta = {}) {
   const rows = [
-    ['Bucket', meta.bucketLabel || 'â€”'],
-    ['Series', meta.seriesLabel || 'â€”'],
+    ['Bucket', meta.bucketLabel || '—'],
+    ['Series', meta.seriesLabel || '—'],
     ['Value', `${Number(meta.value ?? 0).toFixed(1)}%`],
     ['Source rows', String(meta.rowCount ?? 0)],
-    ['Left drain', `${Number(meta.left ?? 0).toFixed(1)}%`],
-    ['Right drain', `${Number(meta.right ?? 0).toFixed(1)}%`],
-    ['Case drain', `${Number(meta.case ?? 0).toFixed(1)}%`],
-    ['Average drain', `${Number(meta.avg ?? 0).toFixed(1)}%`],
+    ['Left Bud Drain', `${Number(meta.left ?? 0).toFixed(1)}%`],
+    ['Right Bud Drain', `${Number(meta.right ?? 0).toFixed(1)}%`],
+    ['Case Drain', `${Number(meta.case ?? 0).toFixed(1)}%`],
   ];
 
   return `
     <div class="chart-tooltip">
       <div class="tooltip-title">Radar Details</div>
-      <div class="tooltip-row"><span class="tooltip-label">Duration</span><span class="tooltip-value">${escapeHtml(meta.durationLabel || 'â€”')}</span></div>
-      <div class="tooltip-row"><span class="tooltip-label">Item</span><span class="tooltip-value">${escapeHtml(meta.itemLabel || 'â€”')}</span></div>
+      <div class="tooltip-row"><span class="tooltip-label">Duration</span><span class="tooltip-value">${escapeHtml(meta.durationLabel || '—')}</span></div>
+      <div class="tooltip-row"><span class="tooltip-label">Item</span><span class="tooltip-value">${escapeHtml(meta.itemLabel || '—')}</span></div>
       ${rows.map(([label, value]) => `
         <div class="tooltip-row">
           <span class="tooltip-label">${escapeHtml(label)}</span>
@@ -748,6 +747,7 @@ function buildRadarBucketTooltipHtml(meta = {}) {
     </div>
   `;
 }
+
 
 function getStatsWeekWindow(weekOffset = 0) {
   const end = new Date();
@@ -2603,8 +2603,7 @@ async function loadBatteryGraph() {
       const leftTotal = leftDrain;
       const rightTotal = rightDrain;
       const caseTotal = caseDrain;
-      const avgTotal = avgDrain ?? 0;
-      const maxTotal = Math.max(leftTotal, rightTotal, caseTotal, avgTotal);
+
       if (item === 'left') {
         categories = ['Left Bud'];
         series = [{ name: 'Left Bud Drain', data: [leftTotal] }];
@@ -2617,20 +2616,18 @@ async function loadBatteryGraph() {
         categories = ['Case'];
         series = [{ name: 'Case Drain', data: [caseTotal] }];
         colors = [purpleColor];
-      } else if (item === 'avg') {
-        categories = ['Average Bud'];
-        series = [{ name: 'Average Bud Drain', data: [avgTotal] }];
-        colors = [whiteColor];
       } else {
-        categories = ['Left Bud', 'Right Bud', 'Case', 'Average', 'Max'];
+        // Radar chart: show only Left Bud Drain, Right Bud Drain, Case Drain (no Average / Max)
+        categories = ['Left Bud', 'Right Bud', 'Case'];
         series = [
           {
             name: 'Drain Comparison',
-            data: [leftTotal, rightTotal, caseTotal, avgTotal, maxTotal]
+            data: [leftTotal, rightTotal, caseTotal]
           }
         ];
         colors = [greenColor];
       }
+
     } else { // all
       series = [
         { name: 'Left Bud', data: [ptLeftStart ?? 0, leftE ?? 0] },
@@ -2845,25 +2842,25 @@ async function loadBatteryGraph() {
         shared: false,
         intersect: true,
         custom: function ({ seriesIndex, dataPointIndex, w }) {
-          const value = w.globals.series?.[seriesIndex]?.[dataPointIndex] ?? 0;
+          const rawValue = w.globals.series?.[seriesIndex]?.[dataPointIndex] ?? 0;
           const label = w.globals.labels?.[dataPointIndex] || categories[dataPointIndex] || 'Radar summary';
           return buildRadarBucketTooltipHtml({
             durationLabel: radarDurationLabel,
             itemLabel: radarItemLabel,
             bucketLabel: label,
             seriesLabel: w.globals.seriesNames?.[seriesIndex] || series?.[seriesIndex]?.name || radarItemLabel,
-            value,
+            value: rawValue,
             rowCount: rawData.length,
             left: leftLevels[dataPointIndex] ?? 0,
             right: rightLevels[dataPointIndex] ?? 0,
             case: caseLevels[dataPointIndex] ?? 0,
-            avg: avgLevels[dataPointIndex] ?? 0,
           });
         }
       };
     } else {
       // Line, Area, Bar
       if (item === 'left') {
+
         series = [{ name: 'Left Bud', data: leftLevels }];
         colors = [greenColor];
       } else if (item === 'right') {
@@ -3161,7 +3158,21 @@ async function loadBatteryGraph() {
       const radarSeries = JSON.parse(JSON.stringify(series));
 
       options.chart.type = 'radar';
-      options.series = radarSeries;
+      // Make tiny drains visible: plot with a small visual epsilon lift,
+      // but keep tooltip values as the real drains.
+      const MIN_VISIBLE_EPS = Math.max(0.8, (batteryStep && Number(batteryStep) > 0 ? Number(batteryStep) : 5) * 0.2);
+      const liftVisual = (v) => {
+        const num = Number(v);
+        if (!Number.isFinite(num) || num <= 0) return 0;
+        return Math.max(num, MIN_VISIBLE_EPS);
+      };
+
+      const radarSeriesVisual = JSON.parse(JSON.stringify(radarSeries));
+      radarSeriesVisual.forEach(s => {
+        if (Array.isArray(s.data)) s.data = s.data.map(liftVisual);
+      });
+
+      options.series = radarSeriesVisual;
 
       // Force radar-specific x/y axis settings for consistent UI
       options.xaxis = {
