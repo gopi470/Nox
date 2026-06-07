@@ -2465,7 +2465,7 @@ function syncGraphTypeOptions(item) {
   const currentValue = typeSelect.value || 'line';
   const allowedValues = item === 'all'
     ? ['line', 'area', 'bar', 'pie', 'donut', 'radar']
-    : ['line', 'area', 'bar', 'radar'];
+    : ['line', 'area', 'bar'];
 
   typeSelect.innerHTML = allowedValues
     .map(value => `<option value="${value}">${graphTypeOptions[value]}</option>`)
@@ -2491,6 +2491,10 @@ async function loadBatteryGraph() {
   syncGraphTypeOptions(item);
   const typeSelect = document.getElementById('graph-type');
   chartType = typeSelect?.value || chartType;
+  if (item !== 'all' && chartType === 'radar') {
+    chartType = 'line';
+    if (typeSelect) typeSelect.value = 'line';
+  }
 
   // Get current live state
   let liveLeft = null, liveRight = null, liveCase = null, isLive = false;
@@ -2807,34 +2811,31 @@ async function loadBatteryGraph() {
       }
     } else if (chartType === 'radar') {
       const radarDurationLabel = graphDurationSelect?.selectedOptions?.[0]?.textContent || (duration === 'day' ? 'Today' : duration === 'week' ? 'Week' : duration === 'month' ? 'Month' : 'This Session');
-      const radarItemLabel = item === 'all' ? 'All' : (item === 'left' ? 'Left Bud' : item === 'right' ? 'Right Bud' : item === 'case' ? 'Case' : 'Average');
-      const leftTotal = leftLevels.reduce((a, b) => a + (b ?? 0), 0);
-      const rightTotal = rightLevels.reduce((a, b) => a + (b ?? 0), 0);
-      const caseTotal = caseLevels.reduce((a, b) => a + (b ?? 0), 0);
-      const avgTotal = roundToStep((leftTotal + rightTotal) / 2);
+      const radarItemLabel = 'All';
 
-      if (item === 'left') {
-        categories = ['Left Bud'];
-        series = [{ name: 'Left Bud Drain', data: [leftTotal] }];
-        colors = [greenColor];
-      } else if (item === 'right') {
-        categories = ['Right Bud'];
-        series = [{ name: 'Right Bud Drain', data: [rightTotal] }];
-        colors = [blueColor];
-      } else if (item === 'case') {
-        categories = ['Case'];
-        series = [{ name: 'Case Drain', data: [caseTotal] }];
-        colors = [purpleColor];
-      } else if (item === 'avg') {
-        categories = ['Average Bud'];
-        series = [{ name: 'Average Bud Drain', data: [avgTotal ?? 0] }];
-        colors = [whiteColor];
-      } else {
-        categories = ['Left Bud', 'Right Bud', 'Case'];
+      if (duration === 'session') {
+        const sessionStart = roundToStep(avgOf([ptLeftStart, ptRightStart, ptCaseStart]) ?? ptLeftStart ?? ptRightStart ?? ptCaseStart ?? 0);
+        const sessionEnd = roundToStep(avgOf([leftE, rightE, caseE]) ?? leftE ?? rightE ?? caseE ?? 0);
+        const sessionDrain = roundToStep(Math.max(0, sessionStart - sessionEnd));
+        categories = ['Start', 'End', 'Drain'];
         series = [
-          { name: 'Left Bud Drain', data: [leftTotal, 0, 0] },
-          { name: 'Right Bud Drain', data: [0, rightTotal, 0] },
-          { name: 'Case Drain', data: [0, 0, caseTotal] }
+          {
+            name: 'Session',
+            data: [sessionStart ?? 0, sessionEnd ?? 0, sessionDrain ?? 0]
+          }
+        ];
+        colors = [greenColor];
+      } else {
+        const radarRows = rawData.slice(-6);
+        const radarCategories = radarRows.map(pt => pt.label);
+        const leftSeries = radarRows.map((_, idx) => leftLevels[leftLevels.length - radarRows.length + idx] ?? 0);
+        const rightSeries = radarRows.map((_, idx) => rightLevels[rightLevels.length - radarRows.length + idx] ?? 0);
+        const caseSeries = radarRows.map((_, idx) => caseLevels[caseLevels.length - radarRows.length + idx] ?? 0);
+        categories = radarCategories;
+        series = [
+          { name: 'Left Bud', data: leftSeries },
+          { name: 'Right Bud', data: rightSeries },
+          { name: 'Case', data: caseSeries }
         ];
         colors = [greenColor, blueColor, purpleColor];
       }
@@ -2853,10 +2854,10 @@ async function loadBatteryGraph() {
             seriesLabel: w.globals.seriesNames?.[seriesIndex] || series?.[seriesIndex]?.name || radarItemLabel,
             value,
             rowCount: rawData.length,
-            left: leftTotal,
-            right: rightTotal,
-            case: caseTotal,
-            avg: avgTotal ?? 0,
+            left: leftLevels[dataPointIndex] ?? 0,
+            right: rightLevels[dataPointIndex] ?? 0,
+            case: caseLevels[dataPointIndex] ?? 0,
+            avg: avgLevels[dataPointIndex] ?? 0,
           });
         }
       };
@@ -3147,25 +3148,80 @@ async function loadBatteryGraph() {
     options.stroke.width = 3;
   }
 
-  if (chartType === 'radar') {
-    const radarCategories = categories.length ? [...categories] : ['Left Bud', 'Right Bud', 'Case'];
-    const radarSeries = JSON.parse(JSON.stringify(series));
+    if (chartType === 'radar') {
+      // ApexCharts radar has different layout behavior depending on whether
+      // the x-axis categories are numeric/labels. For “any duration”, ensure:
+      // - stable category count/order
+      // - stable 0..100 scale
+      // - consistent polygon fill/stroke rendering
+      const radarCategories = (Array.isArray(categories) && categories.length)
+        ? [...categories]
+        : ['Left Bud', 'Right Bud', 'Case'];
 
-    options.chart.type = 'radar';
-    options.series = radarSeries;
-    options.xaxis = {
-      categories: radarCategories,
-      labels: {
+      const radarSeries = JSON.parse(JSON.stringify(series));
+
+      options.chart.type = 'radar';
+      options.series = radarSeries;
+
+      // Force radar-specific x/y axis settings for consistent UI
+      options.xaxis = {
+        categories: radarCategories,
+        labels: {
+          show: true,
+          style: { colors: '#888898', fontSize: '11px' },
+          trim: true
+        }
+      };
+
+      options.yaxis = {
+        show: false,
+        min: 0,
+        max: 100,
+        tickAmount: 5
+      };
+
+      options.grid = {
+        show: false
+      };
+
+      options.stroke = {
         show: true,
-        style: { colors: '#888898', fontSize: '11px' }
-      }
-    };
-    options.yaxis = {
-      show: false,
-      min: 0
-    };
-    options.grid = { show: false };
-  }
+        curve: 'smooth',
+        width: 3
+      };
+
+      options.fill = {
+        type: 'solid',
+        opacity: 0.18
+      };
+
+      options.markers = {
+        size: 5,
+        colors: colors,
+        strokeColors: '#111113',
+        strokeWidth: 2,
+        hover: { size: 7 }
+      };
+
+      options.legend = {
+        show: true,
+        position: 'top',
+        horizontalAlign: 'center',
+        fontSize: '12px',
+        markers: { radius: 12 },
+        labels: { colors: '#888898' }
+      };
+
+      // Ensure radar polygons render consistently regardless of duration.
+      options.plotOptions = {
+        radar: {
+          polygons: {
+            strokeColors: 'rgba(255,255,255,0.08)',
+            connectorColors: 'rgba(255,255,255,0.08)'
+          }
+        }
+      };
+    }
 
   if (batteryChart) {
     batteryChart.destroy();
