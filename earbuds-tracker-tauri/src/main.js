@@ -2520,8 +2520,9 @@ async function loadBatteryGraph() {
 
   const roundToStep = (val) => {
     if (val == null) return null;
-    if (batteryStep <= 1) return val;
-    return Math.round(val / batteryStep) * batteryStep;
+    const clamped = Math.min(100, Math.max(0, val));
+    if (batteryStep <= 1) return clamped;
+    return Math.min(100, Math.round(clamped / batteryStep) * batteryStep);
   };
 
   // Fetch data
@@ -2720,7 +2721,7 @@ async function loadBatteryGraph() {
     const toBatteryValue = (value) => {
       if (value == null) return null;
       const num = Number(value);
-      return Number.isNaN(num) ? null : num;
+      return Number.isNaN(num) ? null : Math.min(100, Math.max(0, num));
     };
     const avgOf = (values) => {
       const nums = values.filter(v => v != null);
@@ -2764,17 +2765,18 @@ async function loadBatteryGraph() {
     const [filledRightStarts, filledRightEnds] = fillPair(rightStarts, rightEnds);
     const [filledCaseStarts, filledCaseEnds] = fillPair(caseStarts, caseEnds);
     const [filledAvgStarts, filledAvgEnds] = fillPair(avgStarts, avgEnds);
-    const leftDrains = filledLeftStarts.map((v, idx) => drainFrom(v, filledLeftEnds[idx]));
-    const rightDrains = filledRightStarts.map((v, idx) => drainFrom(v, filledRightEnds[idx]));
-    const caseDrains = filledCaseStarts.map((v, idx) => drainFrom(v, filledCaseEnds[idx]));
-    const avgDrains = filledAvgStarts.map((v, idx) => drainFrom(v, filledAvgEnds[idx]));
+    const clampLevel = (value) => value == null ? null : Math.min(100, Math.max(0, value));
+    const leftLevels = filledLeftStarts.map((v, idx) => clampLevel(avgOf([v, filledLeftEnds[idx]])));
+    const rightLevels = filledRightStarts.map((v, idx) => clampLevel(avgOf([v, filledRightEnds[idx]])));
+    const caseLevels = filledCaseStarts.map((v, idx) => clampLevel(avgOf([v, filledCaseEnds[idx]])));
+    const avgLevels = filledAvgStarts.map((v, idx) => clampLevel(avgOf([v, filledAvgEnds[idx]])));
 
     categories = rawData.map(pt => pt.label);
 
     if (chartType === 'pie' || chartType === 'donut') {
-      const totalLeft = leftDrains.reduce((a, b) => a + b, 0);
-      const totalRight = rightDrains.reduce((a, b) => a + b, 0);
-      const totalCase = caseDrains.reduce((a, b) => a + b, 0);
+      const totalLeft = leftLevels.reduce((a, b) => a + (b ?? 0), 0);
+      const totalRight = rightLevels.reduce((a, b) => a + (b ?? 0), 0);
+      const totalCase = caseLevels.reduce((a, b) => a + (b ?? 0), 0);
       const totalAvg = roundToStep((totalLeft + totalRight) / 2);
 
       if (item === 'left') {
@@ -2801,9 +2803,9 @@ async function loadBatteryGraph() {
     } else if (chartType === 'radar') {
       const radarDurationLabel = graphDurationSelect?.selectedOptions?.[0]?.textContent || (duration === 'day' ? 'Today' : duration === 'week' ? 'Week' : duration === 'month' ? 'Month' : 'This Session');
       const radarItemLabel = item === 'all' ? 'All' : (item === 'left' ? 'Left Bud' : item === 'right' ? 'Right Bud' : item === 'case' ? 'Case' : 'Average');
-      const leftTotal = leftDrains.reduce((a, b) => a + b, 0);
-      const rightTotal = rightDrains.reduce((a, b) => a + b, 0);
-      const caseTotal = caseDrains.reduce((a, b) => a + b, 0);
+      const leftTotal = leftLevels.reduce((a, b) => a + (b ?? 0), 0);
+      const rightTotal = rightLevels.reduce((a, b) => a + (b ?? 0), 0);
+      const caseTotal = caseLevels.reduce((a, b) => a + (b ?? 0), 0);
       const avgTotal = roundToStep((leftTotal + rightTotal) / 2);
 
       if (item === 'left') {
@@ -2856,22 +2858,22 @@ async function loadBatteryGraph() {
     } else {
       // Line, Area, Bar
       if (item === 'left') {
-        series = [{ name: 'Left Bud Drain', data: leftDrains }];
+        series = [{ name: 'Left Bud', data: leftLevels }];
         colors = [greenColor];
       } else if (item === 'right') {
-        series = [{ name: 'Right Bud Drain', data: rightDrains }];
+        series = [{ name: 'Right Bud', data: rightLevels }];
         colors = [blueColor];
       } else if (item === 'case') {
-        series = [{ name: 'Case Drain', data: caseDrains }];
+        series = [{ name: 'Case', data: caseLevels }];
         colors = [purpleColor];
       } else if (item === 'avg') {
-        series = [{ name: 'Average Bud Drain', data: avgDrains }];
+        series = [{ name: 'Average Bud', data: avgLevels }];
         colors = [whiteColor];
       } else {
         series = [
-          { name: 'Left Bud Drain', data: leftDrains },
-          { name: 'Right Bud Drain', data: rightDrains },
-          { name: 'Case Drain', data: caseDrains }
+          { name: 'Left Bud', data: leftLevels },
+          { name: 'Right Bud', data: rightLevels },
+          { name: 'Case', data: caseLevels }
         ];
         colors = [greenColor, blueColor, purpleColor];
       }
@@ -3040,8 +3042,8 @@ async function loadBatteryGraph() {
     });
 
     if (allVals.length > 0) {
-      let minVal = Math.min(...allVals);
-      let maxVal = Math.max(...allVals);
+      let minVal = 0;
+      let maxVal = 100;
 
       if (duration === 'session') {
         // Always show full range (0 - 100%) for battery levels, with clean 20% intervals (0%, 20%, 40%, 60%, 80%, 100%)
@@ -3063,6 +3065,12 @@ async function loadBatteryGraph() {
         }
         tickAmount = Math.round(yMax / effectiveStep);
       }
+    }
+
+    if (duration !== 'session') {
+      yMin = 0;
+      yMax = 100;
+      tickAmount = 5;
     }
 
     options.yaxis = {
