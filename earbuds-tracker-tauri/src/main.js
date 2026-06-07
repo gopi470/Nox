@@ -2770,25 +2770,30 @@ async function loadBatteryGraph() {
     const rightLevels = filledRightStarts.map((v, idx) => clampLevel(avgOf([v, filledRightEnds[idx]])));
     const caseLevels = filledCaseStarts.map((v, idx) => clampLevel(avgOf([v, filledCaseEnds[idx]])));
     const avgLevels = filledAvgStarts.map((v, idx) => clampLevel(avgOf([v, filledAvgEnds[idx]])));
+    const avgSeriesValue = (values) => {
+      const nums = values.filter(v => v != null);
+      if (!nums.length) return null;
+      return nums.reduce((a, b) => a + b, 0) / nums.length;
+    };
 
     categories = rawData.map(pt => pt.label);
 
     if (chartType === 'pie' || chartType === 'donut') {
-      const totalLeft = leftLevels.reduce((a, b) => a + (b ?? 0), 0);
-      const totalRight = rightLevels.reduce((a, b) => a + (b ?? 0), 0);
-      const totalCase = caseLevels.reduce((a, b) => a + (b ?? 0), 0);
-      const totalAvg = roundToStep((totalLeft + totalRight) / 2);
+      const totalLeft = roundToStep(avgSeriesValue(leftLevels));
+      const totalRight = roundToStep(avgSeriesValue(rightLevels));
+      const totalCase = roundToStep(avgSeriesValue(caseLevels));
+      const totalAvg = roundToStep(avgSeriesValue(avgLevels));
 
       if (item === 'left') {
-        series = [totalLeft];
+        series = [totalLeft ?? 0];
         categories = ['Left Bud'];
         colors = [greenColor];
       } else if (item === 'right') {
-        series = [totalRight];
+        series = [totalRight ?? 0];
         categories = ['Right Bud'];
         colors = [blueColor];
       } else if (item === 'case') {
-        series = [totalCase];
+        series = [totalCase ?? 0];
         categories = ['Case'];
         colors = [purpleColor];
       } else if (item === 'avg') {
@@ -2796,7 +2801,7 @@ async function loadBatteryGraph() {
         categories = ['Average Bud'];
         colors = [whiteColor];
       } else {
-        series = [totalLeft, totalRight, totalCase];
+        series = [totalLeft ?? 0, totalRight ?? 0, totalCase ?? 0];
         categories = ['Left Bud', 'Right Bud', 'Case'];
         colors = [greenColor, blueColor, purpleColor];
       }
@@ -2980,10 +2985,15 @@ async function loadBatteryGraph() {
             },
             total: {
               show: true,
-              label: 'Total Drain',
+              label: duration === 'session' ? 'Total Drain' : 'Avg Level',
               color: '#888898',
               formatter: function (w) {
-                return w.globals.seriesTotals.reduce((a, b) => a + b, 0) + '%';
+                if (duration === 'session') {
+                  return w.globals.seriesTotals.reduce((a, b) => a + b, 0) + '%';
+                }
+                const totals = w.globals.seriesTotals.filter(v => v != null);
+                if (!totals.length) return '0%';
+                return `${Math.round(totals.reduce((a, b) => a + b, 0) / totals.length)}%`;
               }
             }
           }
