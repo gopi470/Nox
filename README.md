@@ -29,7 +29,10 @@ Designed specifically for the **CMF Buds 2a** (with support for custom-named pai
 
 ---
 
-## 🏗️ Architecture Overview
+
+
+## Architecture Overview
+
 
 The system operates across three primary processes:
 
@@ -61,7 +64,8 @@ The system operates across three primary processes:
 
 ---
 
-## 📂 Project Structure
+## Project Structure
+
 
 ```
 ├── BluetoothLauncher.ahk      # AutoHotkey script for background startup/polling
@@ -84,7 +88,8 @@ The system operates across three primary processes:
 
 ---
 
-## 🚀 Installation & Setup
+## Installation & Setup
+
 
 ### Prerequisites
 1. **Windows 10 / 11**
@@ -148,7 +153,8 @@ npm run tauri build
 
 ---
 
-## 🛠️ Configuration Details
+## Configuration Details
+
 
 - **Database Path**: All usage history is persisted to a local SQLite database at:
   `%APPDATA%\EarbudsTracker\tracker.db`
@@ -160,6 +166,7 @@ npm run tauri build
 
 ---
 
-## ⚖️ License & Legal
+## License & Legal
+
 
 This project is not affiliated with, sponsored by, or endorsed by **Nothing Technology Limited** or **CMF**. All brand names, logos, and trademarks are the property of their respective owners.

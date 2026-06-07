@@ -128,6 +128,11 @@ const exportInfoConfirm = document.getElementById('export-info-confirm');
 const exportSuccessDialog = document.getElementById('export-success-dialog');
 const exportSuccessMsg = document.getElementById('export-success-msg');
 const exportSuccessClose = document.getElementById('export-success-close');
+const resetSuccessDialog = document.getElementById('reset-success-dialog');
+const resetSuccessMsg = document.getElementById('reset-success-msg');
+const resetSuccessClose = document.getElementById('reset-success-close');
+const graphDurationSelect = document.getElementById('graph-duration');
+const graphDurationNote = document.getElementById('graph-duration-note');
 const queryLogBtn = document.getElementById('query-log-btn');
 const queryLogDialog = document.getElementById('query-log-dialog');
 const queryLogList = document.getElementById('query-log-list');
@@ -296,6 +301,10 @@ function closeImportInfoDialog() {
 
 function closeImportSuccessDialog() {
   if (importSuccessDialog) importSuccessDialog.hidden = true;
+}
+
+function closeResetSuccessDialog() {
+  if (resetSuccessDialog) resetSuccessDialog.hidden = true;
 }
 
 function escapeHtml(value) {
@@ -515,11 +524,15 @@ exportDataBtn?.addEventListener('click', () => {
 exportInfoCancel?.addEventListener('click', closeExportInfoDialog);
 exportInfoConfirm?.addEventListener('click', exportAllData);
 exportSuccessClose?.addEventListener('click', closeExportSuccessDialog);
+resetSuccessClose?.addEventListener('click', closeResetSuccessDialog);
 exportInfoDialog?.addEventListener('click', (e) => {
   if (e.target === exportInfoDialog) closeExportInfoDialog();
 });
 exportSuccessDialog?.addEventListener('click', (e) => {
   if (e.target === exportSuccessDialog) closeExportSuccessDialog();
+});
+resetSuccessDialog?.addEventListener('click', (e) => {
+  if (e.target === resetSuccessDialog) closeResetSuccessDialog();
 });
 importInfoCancel?.addEventListener('click', closeImportInfoDialog);
 importInfoConfirm?.addEventListener('click', () => {
@@ -634,6 +647,29 @@ function fmtStatsDate(dateStr) {
   }).format(parsed);
 }
 
+function parseGraphTimestamp(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+
+  const parsed = new Date(raw.replace(' ', 'T'));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatGraphBucketLabel(duration, date) {
+  if (duration === 'day') {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(date);
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+}
+
 function fmtStatsDayTitle(day) {
   if (!day) return '';
   const parsed = new Date(`${day.dateStr}T00:00:00`);
@@ -643,6 +679,74 @@ function fmtStatsDayTitle(day) {
     month: 'short',
     day: 'numeric',
   }).format(parsed);
+}
+
+function updateGraphDurationState(isConnected) {
+  if (graphDurationSelect) {
+    const sessionOption = graphDurationSelect.querySelector('option[value="session"]');
+    if (sessionOption) {
+      sessionOption.textContent = isConnected ? 'This Session' : 'Prev Session';
+    }
+  }
+  if (graphDurationNote) {
+    graphDurationNote.textContent = isConnected
+      ? 'Live session data overrides all graphs while connected.'
+      : 'Shows the previous completed session when disconnected.';
+  }
+}
+
+function buildRadarTooltipHtml(meta = {}) {
+  const rows = [
+    ['Category', meta.label || '—'],
+    ['Selected value', `${Number(meta.value ?? 0).toFixed(1)}%`],
+    ['Source rows', String(meta.rowCount ?? 0)],
+    ['Left total', `${Number(meta.leftTotal ?? 0).toFixed(1)}%`],
+    ['Right total', `${Number(meta.rightTotal ?? 0).toFixed(1)}%`],
+    ['Case total', `${Number(meta.caseTotal ?? 0).toFixed(1)}%`],
+    ['Average total', `${Number(meta.avgTotal ?? 0).toFixed(1)}%`],
+    ['Max total', `${Number(meta.maxTotal ?? 0).toFixed(1)}%`],
+  ];
+
+  return `
+    <div class="chart-tooltip">
+      <div class="tooltip-title">Radar Details</div>
+      <div class="tooltip-row"><span class="tooltip-label">Duration</span><span class="tooltip-value">${escapeHtml(meta.durationLabel || '—')}</span></div>
+      <div class="tooltip-row"><span class="tooltip-label">Item</span><span class="tooltip-value">${escapeHtml(meta.itemLabel || '—')}</span></div>
+      ${rows.map(([label, value]) => `
+        <div class="tooltip-row">
+          <span class="tooltip-label">${escapeHtml(label)}</span>
+          <span class="tooltip-value">${escapeHtml(value)}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function buildRadarBucketTooltipHtml(meta = {}) {
+  const rows = [
+    ['Bucket', meta.bucketLabel || 'â€”'],
+    ['Series', meta.seriesLabel || 'â€”'],
+    ['Value', `${Number(meta.value ?? 0).toFixed(1)}%`],
+    ['Source rows', String(meta.rowCount ?? 0)],
+    ['Left drain', `${Number(meta.left ?? 0).toFixed(1)}%`],
+    ['Right drain', `${Number(meta.right ?? 0).toFixed(1)}%`],
+    ['Case drain', `${Number(meta.case ?? 0).toFixed(1)}%`],
+    ['Average drain', `${Number(meta.avg ?? 0).toFixed(1)}%`],
+  ];
+
+  return `
+    <div class="chart-tooltip">
+      <div class="tooltip-title">Radar Details</div>
+      <div class="tooltip-row"><span class="tooltip-label">Duration</span><span class="tooltip-value">${escapeHtml(meta.durationLabel || 'â€”')}</span></div>
+      <div class="tooltip-row"><span class="tooltip-label">Item</span><span class="tooltip-value">${escapeHtml(meta.itemLabel || 'â€”')}</span></div>
+      ${rows.map(([label, value]) => `
+        <div class="tooltip-row">
+          <span class="tooltip-label">${escapeHtml(label)}</span>
+          <span class="tooltip-value">${escapeHtml(value)}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
 function getStatsWeekWindow(weekOffset = 0) {
@@ -1110,6 +1214,57 @@ function fmtDurText(secs) {
   return `${h}h ${leftM}m`;
 }
 
+function fmtRemainingText(secs) {
+  if (!Number.isFinite(secs) || secs <= 0) return '0m';
+  const rounded = Math.max(1, Math.round(secs));
+  if (rounded < 60) return `${rounded}s`;
+  const totalMins = Math.round(rounded / 60);
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+async function updateEstimatedTimeLeft(batteryInfo) {
+  const estText = document.getElementById('live-est-time');
+  if (!estText) return;
+
+  const currentVal = batteryInfo?.left;
+  if (currentVal == null) {
+    estText.innerHTML = `<span style="color: var(--muted); font-size: 14px; font-weight: 400; font-family: 'Inter', sans-serif;">—</span>`;
+    return;
+  }
+
+  let estimateSecs = null;
+  let estimateNote = `based on ${currentVal}% battery`;
+
+  try {
+    const sessions = await invoke('get_sessions');
+    const currentSession = Array.isArray(sessions) && sessions.length > 0 ? sessions[0] : null;
+    const connectedSecs = Number(currentSession?.connected_secs || 0);
+    const startVal = Number(currentSession?.bat_left_connect);
+
+    if (Number.isFinite(connectedSecs) && connectedSecs > 0 && Number.isFinite(startVal)) {
+      const drop = startVal - currentVal;
+      if (drop > 0) {
+        const drainRatePerSec = drop / connectedSecs;
+        if (drainRatePerSec > 0) {
+          estimateSecs = currentVal / drainRatePerSec;
+          estimateNote = `based on this session's drain rate`;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('get_sessions failed for estimated time left', e);
+  }
+
+  if (estimateSecs == null) {
+    // Conservative fallback: roughly 6 hours at 100%.
+    estimateSecs = currentVal * 216;
+  }
+
+  estText.innerHTML = `≈ ${fmtRemainingText(estimateSecs)}<div style="color: var(--muted); font-size: 13px; font-weight: 400; font-family: 'Inter', sans-serif; margin-top: 4px;">${estimateNote}</div>`;
+}
+
 // ── Live Dashboard Extras ───────────────────────────────────────────────────────
 async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay) {
   const appsContainer = document.getElementById('live-apps-container');
@@ -1178,6 +1333,8 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
     console.error('get_sessions failed in extras', e);
   }
 
+  await updateEstimatedTimeLeft(batteryInfo);
+
   // 3. Estimated Time Left
   const estText = document.getElementById('live-est-time');
   if (estText) {
@@ -1191,6 +1348,8 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
       estText.innerHTML = `<span style="color: var(--muted); font-size: 14px; font-weight: 400; font-family: 'Inter', sans-serif;">—</span>`;
     }
   }
+
+  await updateEstimatedTimeLeft(batteryInfo);
 
   // 4. Daily Goal Progress
   const goalTargetSecs = currentGoal * 3600;
@@ -1230,6 +1389,7 @@ async function refreshSnapshot() {
   }
 
   const { connected, playing, sess_conn, sess_play, today, week, month, lifetime } = snap;
+  updateGraphDurationState(connected);
 
   // Fetch battery status if connected
   let batteryInfo = null;
@@ -1249,6 +1409,7 @@ async function refreshSnapshot() {
     storeTodayPlaybackSecs(totalTodayPlay);
   }
   const goalMet = totalTodayPlay >= (currentGoal * 3600);
+  const connectionChanged = wasConnected !== null && wasConnected !== connected;
 
   // Update animation state variables
   lastSessConn = sess_conn;
@@ -1286,6 +1447,9 @@ async function refreshSnapshot() {
     }
   }
   wasConnected = connected;
+  if (connectionChanged && document.getElementById('page-battery')?.classList.contains('active')) {
+    loadBatteryGraph().catch(console.error);
+  }
 
   // Status card
   const dot   = document.getElementById('status-dot');
@@ -1691,13 +1855,14 @@ function fmtSessBattery(r) {
   const interrupted = r.interrupted === 1 || r.interrupted === true;
 
   const formatBud = (conn, disc) => {
-    if (conn === null && disc === null) return '—';
-    const connStr = conn !== null ? `${conn}%` : '—';
-    // If disc is missing but session was interrupted, use conn as last-known value
-    if (disc === null && interrupted && conn !== null) {
-      return `${connStr} → <span style="color:#f87171;font-size:0.7rem;">${conn}% (last)</span>`;
+    const resolvedConn = conn ?? disc;
+    const resolvedDisc = disc ?? conn;
+    if (resolvedConn === null && resolvedDisc === null) return '—';
+    const connStr = resolvedConn !== null ? `${resolvedConn}%` : '—';
+    const discStr = resolvedDisc !== null ? `${resolvedDisc}%` : '—';
+    if (disc === null && conn !== null && interrupted) {
+      return `${connStr} → <span style="color:#f87171;font-size:0.7rem;">${discStr} (last)</span>`;
     }
-    const discStr = disc !== null ? `${disc}%` : '—';
     return `${connStr} → ${discStr}`;
   };
 
@@ -1800,7 +1965,15 @@ document.getElementById('auth-confirm').addEventListener('click', async () => {
       await invoke('reset_all');
       localStorage.removeItem('daily-playback-cache-date');
       localStorage.removeItem('daily-playback-cache-secs');
-      await refreshSnapshot();
+      if (resetSuccessMsg) {
+        resetSuccessMsg.textContent = 'All session history and statistics have been reset.';
+      }
+      if (resetSuccessDialog) resetSuccessDialog.hidden = false;
+      try {
+        await refreshSnapshot();
+      } catch (refreshErr) {
+        console.error('refreshSnapshot after reset failed', refreshErr);
+      }
     } catch (e) { console.error('reset_all failed', e); }
   } else {
     if (authPwdInput) authPwdInput.value = '';
@@ -2275,8 +2448,38 @@ document.querySelector('.nav-item[data-page="breakdown"]')
 
 // ── Battery Analytics Graph ──────────────────────────────────────────────────
 let batteryChart = null;
+let batteryGraphLoadToken = 0;
+const graphTypeOptions = {
+  line: 'Line Graph',
+  area: 'Area Chart',
+  bar: 'Bar Chart',
+  pie: 'Pie Chart',
+  donut: 'Donut Chart',
+  radar: 'Radar Chart'
+};
+
+function syncGraphTypeOptions(item) {
+  const typeSelect = document.getElementById('graph-type');
+  if (!typeSelect) return;
+
+  const currentValue = typeSelect.value || 'line';
+  const allowedValues = item === 'all'
+    ? ['line', 'area', 'bar', 'pie', 'donut', 'radar']
+    : ['line', 'area', 'bar', 'radar'];
+
+  typeSelect.innerHTML = allowedValues
+    .map(value => `<option value="${value}">${graphTypeOptions[value]}</option>`)
+    .join('');
+
+  if (!allowedValues.includes(currentValue)) {
+    typeSelect.value = 'line';
+  } else {
+    typeSelect.value = currentValue;
+  }
+}
 
 async function loadBatteryGraph() {
+  const loadToken = ++batteryGraphLoadToken;
   const canvasEl = document.getElementById('battery-graph-canvas');
   const emptyEl = document.getElementById('graph-empty-state');
   if (!canvasEl) return;
@@ -2285,23 +2488,9 @@ async function loadBatteryGraph() {
   const item = document.getElementById('graph-item')?.value || 'all';
   let chartType = document.getElementById('graph-type')?.value || 'line';
 
-  // Dropdown dependency logic: disable Pie/Donut for single items
+  syncGraphTypeOptions(item);
   const typeSelect = document.getElementById('graph-type');
-  if (typeSelect) {
-    const pieOpt = typeSelect.querySelector('option[value="pie"]');
-    const donutOpt = typeSelect.querySelector('option[value="donut"]');
-    if (item !== 'all') {
-      if (pieOpt) pieOpt.disabled = true;
-      if (donutOpt) donutOpt.disabled = true;
-      if (chartType === 'pie' || chartType === 'donut') {
-        chartType = 'line';
-        typeSelect.value = 'line';
-      }
-    } else {
-      if (pieOpt) pieOpt.disabled = false;
-      if (donutOpt) donutOpt.disabled = false;
-    }
-  }
+  chartType = typeSelect?.value || chartType;
 
   // Get current live state
   let liveLeft = null, liveRight = null, liveCase = null, isLive = false;
@@ -2342,6 +2531,7 @@ async function loadBatteryGraph() {
   } catch(e) {
     console.error('get_battery_graph_data failed', e);
   }
+  if (loadToken !== batteryGraphLoadToken) return;
 
   // Handle empty state
   if (!rawData || rawData.length === 0) {
@@ -2356,6 +2546,8 @@ async function loadBatteryGraph() {
 
   canvasEl.style.display = 'block';
   if (emptyEl) emptyEl.style.display = 'none';
+  canvasEl.style.minHeight = '320px';
+  canvasEl.style.height = chartType === 'pie' || chartType === 'donut' ? '380px' : '360px';
 
   let categories = [];
   let series = [];
@@ -2369,29 +2561,71 @@ async function loadBatteryGraph() {
 
   if (duration === 'session') {
     const pt = rawData[0];
-    const leftE = roundToStep(pt.left_end ?? (isLive ? liveLeft : pt.left_start));
-    const rightE = roundToStep(pt.right_end ?? (isLive ? liveRight : pt.right_start));
-    const caseE = roundToStep(pt.case_end ?? (isLive ? liveCase : pt.case_start));
+    const leftE = roundToStep(pt.left_end ?? pt.left_start);
+    const rightE = roundToStep(pt.right_end ?? pt.right_start);
+    const caseE = roundToStep(pt.case_end ?? pt.case_start);
     const ptLeftStart = roundToStep(pt.left_start);
     const ptRightStart = roundToStep(pt.right_start);
     const ptCaseStart = roundToStep(pt.case_start);
+    const leftDrain = Math.max(0, (ptLeftStart ?? 0) - (leftE ?? 0));
+    const rightDrain = Math.max(0, (ptRightStart ?? 0) - (rightE ?? 0));
+    const caseDrain = Math.max(0, (ptCaseStart ?? 0) - (caseE ?? 0));
+    const avgDrain = roundToStep((leftDrain + rightDrain) / 2);
 
-    categories = ['Start Connection', 'Current / Disconnect'];
-
-    if (item === 'left') {
-      series = [{ name: 'Left Bud', data: [ptLeftStart ?? 0, leftE ?? 0] }];
-      colors = [greenColor];
-    } else if (item === 'right') {
-      series = [{ name: 'Right Bud', data: [ptRightStart ?? 0, rightE ?? 0] }];
-      colors = [blueColor];
-    } else if (item === 'case') {
-      series = [{ name: 'Case', data: [ptCaseStart ?? 0, caseE ?? 0] }];
-      colors = [purpleColor];
-    } else if (item === 'avg') {
-      const startAvg = roundToStep(((pt.left_start ?? 0) + (pt.right_start ?? 0)) / 2);
-      const endAvg = roundToStep(((leftE ?? 0) + (rightE ?? 0)) / 2);
-      series = [{ name: 'Average Bud', data: [startAvg, endAvg] }];
-      colors = [whiteColor];
+    if (chartType === 'pie' || chartType === 'donut') {
+      if (item === 'left') {
+        series = [leftDrain];
+        categories = ['Left Bud'];
+        colors = [greenColor];
+      } else if (item === 'right') {
+        series = [rightDrain];
+        categories = ['Right Bud'];
+        colors = [blueColor];
+      } else if (item === 'case') {
+        series = [caseDrain];
+        categories = ['Case'];
+        colors = [purpleColor];
+      } else if (item === 'avg') {
+        series = [avgDrain];
+        categories = ['Average Bud'];
+        colors = [whiteColor];
+      } else {
+        series = [leftDrain, rightDrain, caseDrain];
+        categories = ['Left Bud', 'Right Bud', 'Case'];
+        colors = [greenColor, blueColor, purpleColor];
+      }
+    } else if (chartType === 'radar') {
+      const leftTotal = leftDrain;
+      const rightTotal = rightDrain;
+      const caseTotal = caseDrain;
+      const avgTotal = avgDrain ?? 0;
+      const maxTotal = Math.max(leftTotal, rightTotal, caseTotal, avgTotal);
+      if (item === 'left') {
+        categories = ['Left Bud'];
+        series = [{ name: 'Left Bud Drain', data: [leftTotal] }];
+        colors = [greenColor];
+      } else if (item === 'right') {
+        categories = ['Right Bud'];
+        series = [{ name: 'Right Bud Drain', data: [rightTotal] }];
+        colors = [blueColor];
+      } else if (item === 'case') {
+        categories = ['Case'];
+        series = [{ name: 'Case Drain', data: [caseTotal] }];
+        colors = [purpleColor];
+      } else if (item === 'avg') {
+        categories = ['Average Bud'];
+        series = [{ name: 'Average Bud Drain', data: [avgTotal] }];
+        colors = [whiteColor];
+      } else {
+        categories = ['Left Bud', 'Right Bud', 'Case', 'Average', 'Max'];
+        series = [
+          {
+            name: 'Drain Comparison',
+            data: [leftTotal, rightTotal, caseTotal, avgTotal, maxTotal]
+          }
+        ];
+        colors = [greenColor];
+      }
     } else { // all
       series = [
         { name: 'Left Bud', data: [ptLeftStart ?? 0, leftE ?? 0] },
@@ -2400,56 +2634,225 @@ async function loadBatteryGraph() {
       ];
       colors = [greenColor, blueColor, purpleColor];
     }
-  } else {
-    // Aggregated session/day/week/month drain delta
-    categories = rawData.map(pt => pt.label);
 
-    const getDrain = (start, end, liveVal) => {
-      const s = roundToStep(start);
-      const e = roundToStep(end ?? (isLive ? liveVal : start));
-      if (s === null || e === null) return 0;
-      return Math.max(0, s - e);
+    if (chartType !== 'pie' && chartType !== 'donut' && chartType !== 'radar') {
+      categories = ['Start', 'End'];
+    }
+  } else {
+    // Session/day/week/month battery levels plotted across sessions
+    const parseGraphTimestamp = (value) => {
+      if (!value) return null;
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
     };
 
-    const leftDrains = rawData.map(pt => getDrain(pt.left_start, pt.left_end, liveLeft));
-    const rightDrains = rawData.map(pt => getDrain(pt.right_start, pt.right_end, liveRight));
-    const caseDrains = rawData.map(pt => getDrain(pt.case_start, pt.case_end, liveCase));
-    const avgDrains = rawData.map((pt, idx) => roundToStep((leftDrains[idx] + rightDrains[idx]) / 2));
+    const dayStart = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const weekStart = (date) => {
+      const d = dayStart(date);
+      const dow = d.getDay();
+      d.setDate(d.getDate() - dow);
+      return d;
+    };
+    const monthWeekStart = (date) => {
+      const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const weekIndex = Math.floor((d.getDate() - 1) / 7);
+      d.setDate(1 + weekIndex * 7);
+      return dayStart(d);
+    };
+    const bucketStartFor = (date) => {
+      if (!date) return null;
+      if (duration === 'day') return new Date(date);
+      if (duration === 'week') return weekStart(date);
+      return monthWeekStart(date);
+    };
+    const formatBucketLabel = (date) => {
+      if (!date) return 'Unknown';
+      if (duration === 'day') {
+        return new Intl.DateTimeFormat('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit'
+        }).format(date);
+      }
+      if (duration === 'week') {
+        return new Intl.DateTimeFormat('en-US', {
+          month: 'short',
+          day: 'numeric'
+        }).format(date);
+      }
+      const weekIndex = Math.floor((date.getDate() - 1) / 7) + 1;
+      const end = new Date(date);
+      end.setDate(Math.min(new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate(), date.getDate() + 6));
+      return `W${weekIndex} ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date)} - ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(end)}`;
+    };
+    const aggregateBuckets = (rows) => {
+      const buckets = new Map();
+      rows.forEach(pt => {
+        const ts = parseGraphTimestamp(pt.ts || pt.session_start || pt.label);
+        const bucketDate = bucketStartFor(ts);
+        const key = bucketDate ? bucketDate.getTime() : (pt.label || '');
+        if (!buckets.has(key)) {
+          buckets.set(key, {
+            sortKey: bucketDate ? bucketDate.getTime() : 0,
+            label: bucketDate ? formatBucketLabel(bucketDate) : pt.label,
+            rowCount: 0,
+            left_start: 0,
+            left_end: 0,
+            right_start: 0,
+            right_end: 0,
+            case_start: 0,
+            case_end: 0
+          });
+        }
+        const bucket = buckets.get(key);
+        bucket.rowCount += 1;
+        bucket.left_start += pt.left_start ?? 0;
+        bucket.left_end += pt.left_end ?? 0;
+        bucket.right_start += pt.right_start ?? 0;
+        bucket.right_end += pt.right_end ?? 0;
+        bucket.case_start += pt.case_start ?? 0;
+        bucket.case_end += pt.case_end ?? 0;
+      });
+      return [...buckets.values()].sort((a, b) => a.sortKey - b.sortKey);
+    };
+
+    const toBatteryValue = (value) => {
+      if (value == null) return null;
+      const num = Number(value);
+      return Number.isNaN(num) ? null : num;
+    };
+    const avgOf = (values) => {
+      const nums = values.filter(v => v != null);
+      if (!nums.length) return null;
+      return nums.reduce((a, b) => a + b, 0) / nums.length;
+    };
+
+    const leftStarts = rawData.map(pt => toBatteryValue(pt.left_start));
+    const leftEnds = rawData.map(pt => toBatteryValue(pt.left_end));
+    const rightStarts = rawData.map(pt => toBatteryValue(pt.right_start));
+    const rightEnds = rawData.map(pt => toBatteryValue(pt.right_end));
+    const caseStarts = rawData.map(pt => toBatteryValue(pt.case_start));
+    const caseEnds = rawData.map(pt => toBatteryValue(pt.case_end));
+    const avgStarts = rawData.map((pt, idx) => avgOf([leftStarts[idx], rightStarts[idx]]));
+    const avgEnds = rawData.map((pt, idx) => avgOf([leftEnds[idx], rightEnds[idx]]));
+    const drainFrom = (start, end) => {
+      if (start == null && end == null) return null;
+      const resolvedStart = start ?? end ?? 0;
+      const resolvedEnd = end ?? start ?? 0;
+      return Math.max(0, resolvedStart - resolvedEnd);
+    };
+    const fillMissingSeries = (values) => {
+      const filled = [];
+      let last = null;
+      for (const value of values) {
+        if (value != null) {
+          last = value;
+          filled.push(value);
+        } else {
+          filled.push(last);
+        }
+      }
+      return filled;
+    };
+    const fillPair = (starts, ends) => {
+      const startSeeded = starts.map((v, idx) => v ?? ends[idx]);
+      const endSeeded = ends.map((v, idx) => v ?? starts[idx]);
+      return [fillMissingSeries(startSeeded), fillMissingSeries(endSeeded)];
+    };
+    const [filledLeftStarts, filledLeftEnds] = fillPair(leftStarts, leftEnds);
+    const [filledRightStarts, filledRightEnds] = fillPair(rightStarts, rightEnds);
+    const [filledCaseStarts, filledCaseEnds] = fillPair(caseStarts, caseEnds);
+    const [filledAvgStarts, filledAvgEnds] = fillPair(avgStarts, avgEnds);
+    const leftDrains = filledLeftStarts.map((v, idx) => drainFrom(v, filledLeftEnds[idx]));
+    const rightDrains = filledRightStarts.map((v, idx) => drainFrom(v, filledRightEnds[idx]));
+    const caseDrains = filledCaseStarts.map((v, idx) => drainFrom(v, filledCaseEnds[idx]));
+    const avgDrains = filledAvgStarts.map((v, idx) => drainFrom(v, filledAvgEnds[idx]));
+
+    categories = rawData.map(pt => pt.label);
 
     if (chartType === 'pie' || chartType === 'donut') {
       const totalLeft = leftDrains.reduce((a, b) => a + b, 0);
       const totalRight = rightDrains.reduce((a, b) => a + b, 0);
       const totalCase = caseDrains.reduce((a, b) => a + b, 0);
+      const totalAvg = roundToStep((totalLeft + totalRight) / 2);
 
-      series = [totalLeft, totalRight, totalCase];
-      categories = ['Left Bud', 'Right Bud', 'Case'];
-      colors = [greenColor, blueColor, purpleColor];
-    } else if (chartType === 'radar') {
-      if (item === 'all') {
-        const maxLeft = Math.max(...leftDrains, 0);
-        const maxRight = Math.max(...rightDrains, 0);
-        const maxCase = Math.max(...caseDrains, 0);
-
-        const avgLeft = leftDrains.reduce((a,b)=>a+b,0) / (leftDrains.length || 1);
-        const avgRight = rightDrains.reduce((a,b)=>a+b,0) / (rightDrains.length || 1);
-        const avgCase = caseDrains.reduce((a,b)=>a+b,0) / (caseDrains.length || 1);
-
-        series = [
-          { name: 'Max Drain', data: [maxLeft, maxRight, maxCase] },
-          { name: 'Average Drain', data: [parseFloat(avgLeft.toFixed(1)), parseFloat(avgRight.toFixed(1)), parseFloat(avgCase.toFixed(1))] }
-        ];
-        categories = ['Left Bud', 'Right Bud', 'Case'];
-        colors = [greenColor, whiteColor];
+      if (item === 'left') {
+        series = [totalLeft];
+        categories = ['Left Bud'];
+        colors = [greenColor];
+      } else if (item === 'right') {
+        series = [totalRight];
+        categories = ['Right Bud'];
+        colors = [blueColor];
+      } else if (item === 'case') {
+        series = [totalCase];
+        categories = ['Case'];
+        colors = [purpleColor];
+      } else if (item === 'avg') {
+        series = [totalAvg ?? 0];
+        categories = ['Average Bud'];
+        colors = [whiteColor];
       } else {
-        let targetData = [];
-        let name = '';
-        if (item === 'left') { targetData = leftDrains; name = 'Left Bud'; colors = [greenColor]; }
-        else if (item === 'right') { targetData = rightDrains; name = 'Right Bud'; colors = [blueColor]; }
-        else if (item === 'case') { targetData = caseDrains; name = 'Case'; colors = [purpleColor]; }
-        else { targetData = avgDrains; name = 'Average'; colors = [whiteColor]; }
-
-        series = [{ name, data: targetData }];
+        series = [totalLeft, totalRight, totalCase];
+        categories = ['Left Bud', 'Right Bud', 'Case'];
+        colors = [greenColor, blueColor, purpleColor];
       }
+    } else if (chartType === 'radar') {
+      const radarDurationLabel = graphDurationSelect?.selectedOptions?.[0]?.textContent || (duration === 'day' ? 'Today' : duration === 'week' ? 'Week' : duration === 'month' ? 'Month' : 'This Session');
+      const radarItemLabel = item === 'all' ? 'All' : (item === 'left' ? 'Left Bud' : item === 'right' ? 'Right Bud' : item === 'case' ? 'Case' : 'Average');
+      const leftTotal = leftDrains.reduce((a, b) => a + b, 0);
+      const rightTotal = rightDrains.reduce((a, b) => a + b, 0);
+      const caseTotal = caseDrains.reduce((a, b) => a + b, 0);
+      const avgTotal = roundToStep((leftTotal + rightTotal) / 2);
+
+      if (item === 'left') {
+        categories = ['Left Bud'];
+        series = [{ name: 'Left Bud Drain', data: [leftTotal] }];
+        colors = [greenColor];
+      } else if (item === 'right') {
+        categories = ['Right Bud'];
+        series = [{ name: 'Right Bud Drain', data: [rightTotal] }];
+        colors = [blueColor];
+      } else if (item === 'case') {
+        categories = ['Case'];
+        series = [{ name: 'Case Drain', data: [caseTotal] }];
+        colors = [purpleColor];
+      } else if (item === 'avg') {
+        categories = ['Average Bud'];
+        series = [{ name: 'Average Bud Drain', data: [avgTotal ?? 0] }];
+        colors = [whiteColor];
+      } else {
+        categories = ['Left Bud', 'Right Bud', 'Case'];
+        series = [
+          { name: 'Left Bud Drain', data: [leftTotal, 0, 0] },
+          { name: 'Right Bud Drain', data: [0, rightTotal, 0] },
+          { name: 'Case Drain', data: [0, 0, caseTotal] }
+        ];
+        colors = [greenColor, blueColor, purpleColor];
+      }
+
+      options.tooltip = {
+        theme: 'dark',
+        shared: false,
+        intersect: true,
+        custom: function ({ seriesIndex, dataPointIndex, w }) {
+          const value = w.globals.series?.[seriesIndex]?.[dataPointIndex] ?? 0;
+          const label = w.globals.labels?.[dataPointIndex] || categories[dataPointIndex] || 'Radar summary';
+          return buildRadarBucketTooltipHtml({
+            durationLabel: radarDurationLabel,
+            itemLabel: radarItemLabel,
+            bucketLabel: label,
+            seriesLabel: w.globals.seriesNames?.[seriesIndex] || series?.[seriesIndex]?.name || radarItemLabel,
+            value,
+            rowCount: rawData.length,
+            left: leftTotal,
+            right: rightTotal,
+            case: caseTotal,
+            avg: avgTotal ?? 0,
+          });
+        }
+      };
     } else {
       // Line, Area, Bar
       if (item === 'left') {
@@ -2464,7 +2867,7 @@ async function loadBatteryGraph() {
       } else if (item === 'avg') {
         series = [{ name: 'Average Bud Drain', data: avgDrains }];
         colors = [whiteColor];
-      } else { // all
+      } else {
         series = [
           { name: 'Left Bud Drain', data: leftDrains },
           { name: 'Right Bud Drain', data: rightDrains },
@@ -2480,7 +2883,7 @@ async function loadBatteryGraph() {
   const options = {
     chart: {
       type: chartType,
-      height: 320,
+      height: chartType === 'pie' || chartType === 'donut' ? 380 : 320,
       background: 'transparent',
       fontFamily: '"Segoe UI Variable", "Segoe UI", system-ui, sans-serif',
       toolbar: { show: false },
@@ -2499,17 +2902,23 @@ async function loadBatteryGraph() {
     stroke: {
       show: true,
       curve: 'smooth',
-      width: isPieOrDonut ? 0 : (chartType === 'bar' ? 0 : 2)
+      width: isPieOrDonut ? 0 : (chartType === 'bar' ? 0 : (chartType === 'area' ? 3 : 2))
     },
-    fill: {
-      type: chartType === 'area' ? 'gradient' : 'solid',
-      gradient: {
-        shadeIntensity: 1,
-        opacityFrom: 0.4,
-        opacityTo: 0.02,
-        stops: [0, 95, 100]
-      }
-    },
+    fill: chartType === 'area'
+      ? {
+          type: 'gradient',
+          opacity: 0.9,
+          gradient: {
+            shadeIntensity: 0.35,
+            opacityFrom: 0.42,
+            opacityTo: 0.08,
+            stops: [0, 70, 100]
+          }
+        }
+      : {
+          type: 'solid',
+          opacity: 1
+        },
     grid: {
       borderColor: 'rgba(255, 255, 255, 0.08)',
       strokeDashArray: 4,
@@ -2518,7 +2927,7 @@ async function loadBatteryGraph() {
       padding: { top: 10, right: 20, bottom: 0, left: 10 }
     },
     markers: {
-      size: duration === 'session' ? 6 : (chartType === 'line' || chartType === 'area' ? 4 : 0),
+      size: duration === 'session' ? 6 : (chartType === 'line' ? 4 : (chartType === 'area' ? 2 : 0)),
       colors: colors,
       strokeColors: '#111113',
       strokeWidth: 2,
@@ -2534,7 +2943,7 @@ async function loadBatteryGraph() {
       }
     },
     legend: {
-      show: true,
+      show: isPieOrDonut || chartType === 'radar' || item === 'all',
       position: 'top',
       horizontalAlign: 'right',
       fontSize: '12px',
@@ -2544,6 +2953,7 @@ async function loadBatteryGraph() {
   };
 
   if (isPieOrDonut) {
+    options.series = series;
     options.labels = categories;
     options.stroke = { show: false };
     options.dataLabels = {
@@ -2554,6 +2964,8 @@ async function loadBatteryGraph() {
     };
     options.plotOptions = {
       pie: {
+        expandOnClick: true,
+        customScale: 0.92,
         donut: {
           size: '70%',
           labels: {
@@ -2576,7 +2988,32 @@ async function loadBatteryGraph() {
         }
       }
     };
+    options.legend = {
+      show: true,
+      position: 'bottom',
+      horizontalAlign: 'center',
+      fontSize: '12px',
+      markers: { radius: 12 },
+      labels: { colors: '#888898' }
+    };
+  } else if (chartType === 'radar') {
+    options.legend = {
+      show: true,
+      position: 'top',
+      horizontalAlign: 'center',
+      fontSize: '12px',
+      markers: { radius: 12 },
+      labels: { colors: '#888898' }
+    };
   } else {
+    options.legend = {
+      show: item === 'all',
+      position: 'top',
+      horizontalAlign: 'right',
+      fontSize: '12px',
+      markers: { radius: 12 },
+      labels: { colors: '#888898' }
+    };
     options.series = series;
     options.xaxis = {
       categories: categories,
@@ -2641,6 +3078,25 @@ async function loadBatteryGraph() {
     };
   }
 
+  if (isPieOrDonut && series.every(v => v == null || Number.isNaN(v))) {
+    canvasEl.style.display = 'none';
+    if (emptyEl) {
+      emptyEl.style.display = 'flex';
+      emptyEl.innerHTML = `
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.4;">
+          <path d="M3 3v18h18"/>
+          <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
+        </svg>
+        <p>No drain data found for the selected range.</p>
+      `;
+    }
+    if (batteryChart) {
+      batteryChart.destroy();
+      batteryChart = null;
+    }
+    return;
+  }
+
   if (chartType === 'bar') {
     options.plotOptions = {
       bar: {
@@ -2650,7 +3106,42 @@ async function loadBatteryGraph() {
     };
   }
 
+  if ((chartType === 'pie' || chartType === 'donut') && item !== 'all') {
+    canvasEl.style.display = 'none';
+    if (emptyEl) {
+      emptyEl.style.display = 'flex';
+      emptyEl.innerHTML = `
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.4;">
+          <path d="M3 3v18h18"/>
+          <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
+        </svg>
+        <p>Pie and donut charts are only available when Item is set to All.</p>
+      `;
+    }
+    if (batteryChart) {
+      batteryChart.destroy();
+      batteryChart = null;
+    }
+    return;
+  }
+
+  if (chartType === 'area') {
+    options.stroke.width = 3;
+  }
+
   if (chartType === 'radar') {
+    const radarCategories = categories.length ? [...categories] : ['Left Bud', 'Right Bud', 'Case'];
+    const radarSeries = JSON.parse(JSON.stringify(series));
+
+    options.chart.type = 'radar';
+    options.series = radarSeries;
+    options.xaxis = {
+      categories: radarCategories,
+      labels: {
+        show: true,
+        style: { colors: '#888898', fontSize: '11px' }
+      }
+    };
     options.yaxis = {
       show: false,
       min: 0
@@ -2660,10 +3151,19 @@ async function loadBatteryGraph() {
 
   if (batteryChart) {
     batteryChart.destroy();
+    batteryChart = null;
   }
 
-  batteryChart = new ApexCharts(canvasEl, options);
-  batteryChart.render();
+  const freshCanvasEl = canvasEl.cloneNode(false);
+  canvasEl.replaceWith(freshCanvasEl);
+  if (loadToken !== batteryGraphLoadToken) return;
+  batteryChart = new ApexCharts(freshCanvasEl, options);
+  requestAnimationFrame(() => {
+    if (loadToken !== batteryGraphLoadToken) return;
+    if (batteryChart) {
+      batteryChart.render().catch(console.error);
+    }
+  });
 }
 
 // Wire up dropdown events

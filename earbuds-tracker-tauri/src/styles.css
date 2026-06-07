@@ -1102,6 +1102,12 @@ body.font-ndot .analytics-title {
   letter-spacing: 0.6px;
   color: var(--muted);
 }
+.filter-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  max-width: 180px;
+}
 .filter-select {
   background: var(--bg3);
   border: 1px solid var(--border);
@@ -1135,6 +1141,11 @@ body.font-ndot .analytics-title {
   position: relative;
   min-height: 320px;
   width: 100%;
+}
+.battery-graph-canvas {
+  width: 100%;
+  min-height: 320px;
+  height: 360px;
 }
 .graph-empty-state {
   display: none;

@@ -61,6 +61,24 @@ fn round_to_step(val: u8, step: u8) -> u8 {
     rounded.min(100)
 }
 
+fn merge_battery_reading(
+    previous: Option<crate::spp::BatteryInfo>,
+    mut current: crate::spp::BatteryInfo,
+) -> crate::spp::BatteryInfo {
+    if let Some(prev) = previous {
+        if current.left.is_none() {
+            current.left = prev.left;
+        }
+        if current.right.is_none() {
+            current.right = prev.right;
+        }
+        if current.case.is_none() {
+            current.case = prev.case;
+        }
+    }
+    current
+}
+
 impl Tracker {
     pub fn new(device_name: &str, battery_interval_secs: u64, battery_step: u8) -> Self {
         let dev_name = Arc::new(RwLock::new(device_name.to_string()));
@@ -214,7 +232,6 @@ impl Tracker {
                     std::thread::spawn(move || {
                         // Wait a short bit after connection to let SPP settle
                         std::thread::sleep(Duration::from_secs(2));
-                        let mut db_updated = false;
                         while bt_clone.is_connected() {
                             let previous_bat = cache_clone.lock().clone();
                             tracker_clone.record_query_log(
@@ -222,13 +239,7 @@ impl Tracker {
                                 format!("Polling {}", dev_for_bat),
                             );
                             if let Some(mut bat) = crate::spp::read_battery(&dev_for_bat) {
-                                // Some devices omit the case reading when the buds are out of the case.
-                                // Keep the last known case level so the graphs stay structurally consistent.
-                                if bat.case.is_none() {
-                                    bat.case = previous_bat
-                                        .as_ref()
-                                        .and_then(|prev| prev.case);
-                                }
+                                bat = merge_battery_reading(previous_bat, bat);
                                 let step = tracker_clone.get_battery_step();
                                 if step > 1 {
                                     bat.left = bat.left.map(|v| round_to_step(v, step));
@@ -247,10 +258,7 @@ impl Tracker {
                                     format!("L={:?} R={:?} C={:?}", bat.left, bat.right, bat.case),
                                 );
                                 *cache_clone.lock() = Some(bat.clone());
-                                if !db_updated {
-                                    db::set_connect_battery(id, bat.left, bat.right, bat.case);
-                                    db_updated = true;
-                                }
+                                db::set_connect_battery(id, bat.left, bat.right, bat.case);
                                 call_notify(&on_change_clone);
                             } else {
                                 tracker_clone.record_query_log(

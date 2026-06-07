@@ -106,7 +106,11 @@ pub fn close_session(id: i64, end: &NaiveDateTime, connected: f64, playback: f64
 pub fn set_connect_battery(id: i64, left: Option<u8>, right: Option<u8>, case: Option<u8>) {
     let db = conn().lock();
     db.execute(
-        "UPDATE sessions SET bat_left_connect=?1, bat_right_connect=?2, bat_case_connect=?3 WHERE id=?4",
+        "UPDATE sessions SET
+             bat_left_connect  = COALESCE(bat_left_connect,  ?1),
+             bat_right_connect = COALESCE(bat_right_connect, ?2),
+             bat_case_connect  = COALESCE(bat_case_connect,  ?3)
+         WHERE id=?4",
         params![left.map(|v| v as i64), right.map(|v| v as i64), case.map(|v| v as i64), id],
     ).ok();
 }
@@ -115,7 +119,11 @@ pub fn set_connect_battery(id: i64, left: Option<u8>, right: Option<u8>, case: O
 pub fn set_disconnect_battery(id: i64, left: Option<u8>, right: Option<u8>, case: Option<u8>) {
     let db = conn().lock();
     db.execute(
-        "UPDATE sessions SET bat_left_disc=?1, bat_right_disc=?2, bat_case_disc=?3 WHERE id=?4",
+        "UPDATE sessions SET
+             bat_left_disc  = COALESCE(?1, bat_left_connect,  bat_left_disc),
+             bat_right_disc = COALESCE(?2, bat_right_connect, bat_right_disc),
+             bat_case_disc  = COALESCE(?3, bat_case_connect,  bat_case_disc)
+         WHERE id=?4",
         params![left.map(|v| v as i64), right.map(|v| v as i64), case.map(|v| v as i64), id],
     ).ok();
 }
