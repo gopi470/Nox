@@ -59,7 +59,7 @@ const invoke = (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.co
   if (cmd === 'import_all_data') return true;
   return [];
 });
-const event  = window.__TAURI__ && window.__TAURI__.event;
+const event = window.__TAURI__ && window.__TAURI__.event;
 
 // ── Preferences State ──────────────────────────────────────────────────────────
 let currentGoal = (() => {
@@ -67,6 +67,7 @@ let currentGoal = (() => {
   return Number.isFinite(storedGoal) ? Math.min(12, Math.max(0.5, storedGoal)) : 2.0;
 })();
 let notificationsEnabled = localStorage.getItem('notifications-enabled') !== 'false';
+let startupEnabled = localStorage.getItem('startup-enabled') === 'true';
 let currentDeviceName = localStorage.getItem('target-device') || 'CMF Buds 2a';
 let fontStyle = localStorage.getItem('font-style') || 'default';
 let batteryPollIntervalSec = 10;
@@ -110,6 +111,7 @@ function storeTodayPlaybackSecs(secs) {
 // Elements
 const goalInput = document.getElementById('goal-input');
 const notificationToggle = document.getElementById('notification-toggle');
+const startupToggle = document.getElementById('startup-toggle');
 const deviceNameInput = document.getElementById('device-name-input');
 const fontStyleSelect = document.getElementById('font-style-select');
 const batteryStepSelect = document.getElementById('battery-step-select');
@@ -172,6 +174,43 @@ if (notificationToggle) {
     }
   });
 }
+if (startupToggle) {
+  // Initialise the toggle from the saved preference first, then reconcile
+  // with the OS-registered state once the backend answers. This keeps the
+  // UI in sync with whichever source of truth is available first.
+  startupToggle.checked = startupEnabled;
+  try {
+    invoke('get_startup_enabled').then((serverEnabled) => {
+      startupEnabled = !!serverEnabled;
+      startupToggle.checked = startupEnabled;
+      localStorage.setItem('startup-enabled', startupEnabled);
+    }).catch(console.error);
+  } catch (e) {
+    console.error('get_startup_enabled failed', e);
+  }
+  startupToggle.addEventListener('change', async (e) => {
+    const desired = !!e.target.checked;
+    const prev = startupEnabled;
+    startupEnabled = desired;
+    localStorage.setItem('startup-enabled', startupEnabled);
+    try {
+      const ok = await invoke('set_startup_enabled', { enabled: desired });
+      if (!ok) {
+        // Revert UI if backend rejected the change
+        startupEnabled = prev;
+        startupToggle.checked = prev;
+        localStorage.setItem('startup-enabled', prev);
+        alert('Could not update the Windows startup registration. Please try again.');
+      }
+    } catch (err) {
+      console.error('set_startup_enabled failed', err);
+      startupEnabled = prev;
+      startupToggle.checked = prev;
+      localStorage.setItem('startup-enabled', prev);
+    }
+  });
+}
+
 applyFontStyle(fontStyle);
 if (fontStyleSelect) {
   fontStyleSelect.value = fontStyle;
@@ -183,7 +222,7 @@ async function initDeviceNameDatalist() {
   const input = document.getElementById('device-name-input');
   const datalist = document.getElementById('device-name-list');
   const sub = document.getElementById('dashboard-sub');
-  
+
   const updateSub = () => {
     if (sub) sub.textContent = `Real-time connection monitoring for ${currentDeviceName}`;
   };
@@ -397,12 +436,14 @@ function buildSettingsBackup() {
   return {
     playback_goal: currentGoal,
     notifications_enabled: notificationsEnabled,
+    startup_enabled: startupEnabled,
     target_device: currentDeviceName,
     font_style: fontStyle,
     battery_interval_secs: batteryPollIntervalSec,
     battery_step: parseInt(batteryStepSelect?.value || '5', 10) || 5,
   };
 }
+
 
 async function exportAllData() {
   const exportBtn = exportDataBtn;
@@ -478,7 +519,15 @@ async function restoreSettingsFromBackup(settings = {}) {
     await invoke('set_battery_step', { step }).catch(console.error);
   }
 
+  if (typeof settings.startup_enabled === 'boolean') {
+    startupEnabled = settings.startup_enabled;
+    if (startupToggle) startupToggle.checked = startupEnabled;
+    localStorage.setItem('startup-enabled', startupEnabled);
+    await invoke('set_startup_enabled', { enabled: startupEnabled }).catch(console.error);
+  }
+
   await refreshSnapshot();
+
   updateDailyStatsAndChart();
 }
 
@@ -609,7 +658,7 @@ function fmtFull(secs) {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sc = s % 60;
-  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sc).padStart(2,'0')}`;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sc).padStart(2, '0')}`;
 }
 
 function fmtH(secs) {
@@ -617,8 +666,8 @@ function fmtH(secs) {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sc = s % 60;
-  if (h) return `${h}h ${String(m).padStart(2,'0')}m`;
-  if (m) return `${m}m ${String(sc).padStart(2,'0')}s`;
+  if (h) return `${h}h ${String(m).padStart(2, '0')}m`;
+  if (m) return `${m}m ${String(sc).padStart(2, '0')}s`;
   return `${sc}s`;
 }
 
@@ -941,8 +990,8 @@ function positionStatsTooltip(day, clientX, clientY) {
 
 // ── Ring canvas ───────────────────────────────────────────────────────────────
 const canvas = document.getElementById('ring-canvas');
-const ctx    = canvas.getContext('2d');
-const dpr    = window.devicePixelRatio || 1;
+const ctx = canvas.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
 const W = 220;
 const H = 220;
 
@@ -961,14 +1010,14 @@ if (canvas) {
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
     mousePos = { x: mx, y: my };
-    
+
     const cx = W / 2, cy = H / 2;
     const rOut = W / 2 - 20;
-    const rIn  = rOut - 18;
+    const rIn = rOut - 18;
     const dx = mx - cx;
     const dy = my - cy;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-    
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
     if (Math.abs(dist - rOut) < HIT || Math.abs(dist - rIn) < HIT) {
       canvas.style.cursor = 'pointer';
     } else {
@@ -985,14 +1034,14 @@ if (canvas) {
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-    
+
     const cx = W / 2, cy = H / 2;
     const rOut = W / 2 - 20;
-    const rIn  = rOut - 18;
+    const rIn = rOut - 18;
     const dx = mx - cx;
     const dy = my - cy;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-    
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
     if (Math.abs(dist - rOut) < HIT) {
       navigateToPage('history');
     } else if (Math.abs(dist - rIn) < HIT) {
@@ -1007,14 +1056,14 @@ function drawRing(connSecs, playSecs, connected, playing, goalMet) {
   ctx.clearRect(0, 0, W, H);
   const cx = W / 2, cy = H / 2;
   const rOut = W / 2 - 20;
-  const rIn  = rOut - 18;
-  const sw   = 10;
+  const rIn = rOut - 18;
+  const sw = 10;
 
   const trackOut = playing ? '#2d2d2d' : '#2a2a2e';
-  const trackIn  = playing ? '#1f3a22' : '#2e2e34';
-  const connCol  = connected ? '#ffffff' : '#3a3a40';
-  const playCol  = playing   
-    ? (goalMet ? '#fbbf24' : '#4ade80') 
+  const trackIn = playing ? '#1f3a22' : '#2e2e34';
+  const connCol = connected ? '#ffffff' : '#3a3a40';
+  const playCol = playing
+    ? (goalMet ? '#fbbf24' : '#4ade80')
     : '#2a3a2a';
 
   // Apply a lighter pulse glow to playback ring when active
@@ -1029,8 +1078,8 @@ function drawRing(connSecs, playSecs, connected, playing, goalMet) {
     ctx.beginPath();
     ctx.arc(cx, cy, r, start, start + span, span < 0);
     ctx.strokeStyle = color;
-    ctx.lineWidth   = sw;
-    ctx.lineCap     = 'round';
+    ctx.lineWidth = sw;
+    ctx.lineCap = 'round';
     ctx.stroke();
   }
 
@@ -1047,7 +1096,7 @@ function drawRing(connSecs, playSecs, connected, playing, goalMet) {
 
   // Inner track
   ctx.shadowBlur = 0; // reset shadow for inner track
-  arc(rIn,  0, Math.PI * 2, trackIn);
+  arc(rIn, 0, Math.PI * 2, trackIn);
 
   // Inner progress arc (playback) with glow
   if (playing) {
@@ -1059,7 +1108,7 @@ function drawRing(connSecs, playSecs, connected, playing, goalMet) {
     arc(rIn, -Math.PI / 2, playSpan, playCol);
   }
   ctx.shadowBlur = 0; // reset
-  
+
 
 
   // ── Center text/visualizer logic ──
@@ -1067,7 +1116,7 @@ function drawRing(connSecs, playSecs, connected, playing, goalMet) {
   if (mousePos) {
     const dx = mousePos.x - cx;
     const dy = mousePos.y - cy;
-    const dist = Math.sqrt(dx*dx + dy*dy);
+    const dist = Math.sqrt(dx * dx + dy * dy);
     if (Math.abs(dist - rOut) < 20) {
       hoverType = 'conn';
     } else if (Math.abs(dist - rIn) < 20) {
@@ -1077,7 +1126,7 @@ function drawRing(connSecs, playSecs, connected, playing, goalMet) {
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  
+
   if (hoverType === 'conn') {
     // Draw a subtle highlight glow on the outer ring
     ctx.shadowBlur = 6;
@@ -1089,7 +1138,7 @@ function drawRing(connSecs, playSecs, connected, playing, goalMet) {
     ctx.font = 'bold 10px "Segoe UI", sans-serif';
     ctx.fillStyle = '#888898';
     ctx.fillText('CONNECTION', cx, cy - 14);
-    
+
     ctx.font = 'bold 14px "Cascadia Code", monospace';
     ctx.fillStyle = '#ffffff';
     const connTimeStr = document.getElementById('conn-time').textContent;
@@ -1105,7 +1154,7 @@ function drawRing(connSecs, playSecs, connected, playing, goalMet) {
     ctx.font = 'bold 10px "Segoe UI", sans-serif';
     ctx.fillStyle = '#888898';
     ctx.fillText('PLAYBACK', cx, cy - 14);
-    
+
     ctx.font = 'bold 14px "Cascadia Code", monospace';
     ctx.fillStyle = goalMet ? '#fbbf24' : '#4ade80';
     const playTimeStr = document.getElementById('play-time').textContent;
@@ -1300,7 +1349,7 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
     } else {
       appsContainer.innerHTML = '<div style="color: var(--muted); font-size: 13px; font-style: italic; text-align: center;">Nothing playing right now</div>';
     }
-  } catch(e) {
+  } catch (e) {
     console.error('get_active_audio_apps failed', e);
   }
 
@@ -1310,7 +1359,7 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
     if (sessions && sessions.length > 0) {
       const currentSession = sessions[0];
       const connTime = fmtDurText(currentSession.connected_secs);
-      
+
       let batteryDropText = '';
       if (batteryInfo) {
         const startBat = currentSession.bat_left_connect;
@@ -1326,10 +1375,10 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
           }
         }
       }
-      
+
       factsText.innerHTML = `You've been connected for <strong>${connTime}</strong> in this session.${batteryDropText}`;
     }
-  } catch(e) {
+  } catch (e) {
     console.error('get_sessions failed in extras', e);
   }
 
@@ -1354,11 +1403,11 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
   // 4. Daily Goal Progress
   const goalTargetSecs = currentGoal * 3600;
   const progressPct = Math.min(100, (totalTodayPlay / goalTargetSecs) * 100);
-  
-  const goalValEl  = document.getElementById('live-goal-val');
+
+  const goalValEl = document.getElementById('live-goal-val');
   const goalTargetEl = document.getElementById('live-goal-target');
-  const goalBarEl  = document.getElementById('live-goal-bar');
-  const goalPctEl  = document.getElementById('live-goal-pct');
+  const goalBarEl = document.getElementById('live-goal-bar');
+  const goalPctEl = document.getElementById('live-goal-pct');
 
   if (goalValEl && goalTargetEl && goalBarEl) {
     goalValEl.textContent = fmtDurText(totalTodayPlay);
@@ -1423,7 +1472,7 @@ async function refreshSnapshot() {
 
   const playEl = document.getElementById('play-time');
   playEl.textContent = fmtFull(sess_play);
-  
+
   if (playing) {
     playEl.style.color = goalMet ? '#fbbf24' : 'var(--green)';
   } else {
@@ -1452,38 +1501,38 @@ async function refreshSnapshot() {
   }
 
   // Status card
-  const dot   = document.getElementById('status-dot');
+  const dot = document.getElementById('status-dot');
   const title = document.getElementById('status-title');
-  const desc  = document.getElementById('status-desc');
+  const desc = document.getElementById('status-desc');
   if (playing) {
     if (dot) dot.className = 'status-dot playing';
     title.textContent = goalMet ? 'Playing (Goal Met!)' : 'Playing';
     title.style.color = goalMet ? '#fbbf24' : 'var(--green)';
-    desc.textContent  = 'Streaming live audio';
+    desc.textContent = 'Streaming live audio';
   } else if (connected) {
     if (dot) dot.className = 'status-dot connected';
     title.textContent = 'Connected (Idle)';
     title.style.color = '#d4a017';
-    desc.textContent  = 'Link active – no media playing';
+    desc.textContent = 'Link active – no media playing';
   } else {
     if (dot) dot.className = 'status-dot disconnected';
     title.textContent = 'Disconnected';
     title.style.color = 'var(--muted)';
-    desc.textContent  = `${currentDeviceName} is out of range or off`;
+    desc.textContent = `${currentDeviceName} is out of range or off`;
   }
 
   // Update Live Dashboard Extras
   updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay);
 
   // Stats page
-  document.getElementById('s-today-conn').textContent  = fmtH(today.connected);
-  document.getElementById('s-today-play').textContent  = fmtH(today.playback);
-  document.getElementById('s-week-conn').textContent   = fmtH(week.connected);
-  document.getElementById('s-week-play').textContent   = fmtH(week.playback);
-  document.getElementById('s-month-conn').textContent  = fmtH(month.connected);
-  document.getElementById('s-month-play').textContent  = fmtH(month.playback);
-  document.getElementById('s-life-conn').textContent   = fmtH(lifetime.connected);
-  document.getElementById('s-life-play').textContent   = fmtH(lifetime.playback);
+  document.getElementById('s-today-conn').textContent = fmtH(today.connected);
+  document.getElementById('s-today-play').textContent = fmtH(today.playback);
+  document.getElementById('s-week-conn').textContent = fmtH(week.connected);
+  document.getElementById('s-week-play').textContent = fmtH(week.playback);
+  document.getElementById('s-month-conn').textContent = fmtH(month.connected);
+  document.getElementById('s-month-play').textContent = fmtH(month.playback);
+  document.getElementById('s-life-conn').textContent = fmtH(lifetime.connected);
+  document.getElementById('s-life-play').textContent = fmtH(lifetime.playback);
 
   // If stats page is active, update chart
   const activePage = document.querySelector('.nav-item.active').dataset.page;
@@ -1609,7 +1658,7 @@ function drawDailyChart(history, weekOffset = 0) {
 
   const c = chartCanvas.getContext('2d');
   c.scale(dpr, dpr);
-  
+
   c.clearRect(0, 0, w, h);
 
   const days = buildStatsDays(weekOffset);
@@ -1809,7 +1858,7 @@ function updateBatteryUI(batteryInfo) {
     } else {
       valEl.textContent = `${val}%`;
       progressEl.style.width = `${val}%`;
-      
+
       if (!isLive) {
         colEl.classList.add('offline');
         if (trackEl) trackEl.classList.remove('charging');
@@ -1883,7 +1932,7 @@ async function loadHistory() {
   rows.forEach(r => {
     const tr = document.createElement('tr');
     const start = prettyTimestamp(r.session_start);
-    const end   = r.session_end ? prettyTimestamp(r.session_end) : '—';
+    const end = r.session_end ? prettyTimestamp(r.session_end) : '—';
     const interrupted = r.interrupted === 1 || r.interrupted === true;
     const redStyle = interrupted ? 'color:#f87171;' : '';
     tr.innerHTML = `
@@ -1901,10 +1950,10 @@ async function loadHistory() {
 document.getElementById('refresh-btn').addEventListener('click', loadHistory);
 
 // ── Settings – reset (2-step: confirm → Windows auth) ────────────────────────
-const dialog     = document.getElementById('dialog');
+const dialog = document.getElementById('dialog');
 const authDialog = document.getElementById('auth-dialog');
 const authPwdInput = document.getElementById('auth-password-input');
-const authError    = document.getElementById('auth-error');
+const authError = document.getElementById('auth-error');
 const authUsername = document.getElementById('auth-username');
 
 // Populate username label
@@ -1928,7 +1977,7 @@ document.getElementById('dialog-cancel').addEventListener('click', () => {
 document.getElementById('dialog-confirm').addEventListener('click', () => {
   dialog.hidden = true;
   if (authPwdInput) authPwdInput.value = '';
-  if (authError)    authError.style.display = 'none';
+  if (authError) authError.style.display = 'none';
   authDialog.hidden = false;
   // Auto-focus the password field
   setTimeout(() => authPwdInput && authPwdInput.focus(), 60);
@@ -1938,7 +1987,7 @@ document.getElementById('dialog-confirm').addEventListener('click', () => {
 document.getElementById('auth-cancel').addEventListener('click', () => {
   authDialog.hidden = true;
   if (authPwdInput) authPwdInput.value = '';
-  if (authError)    authError.style.display = 'none';
+  if (authError) authError.style.display = 'none';
 });
 
 // Step 2 – confirm: verify password then reset
@@ -2010,8 +2059,8 @@ window.addEventListener('resize', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 let bdAllSessions = [];      // full list from backend
-let bdSelectedId  = null;    // currently selected session id
-let bdNoteTimer   = null;    // debounce timer for note autosave
+let bdSelectedId = null;    // currently selected session id
+let bdNoteTimer = null;    // debounce timer for note autosave
 
 // ── Format helpers ────────────────────────────────────────────────────────────
 function bdFmtDur(secs) {
@@ -2042,13 +2091,13 @@ function bdFmtBat(v) {
 
 function bdFmtAppName(name) {
   if (!name) return '—';
-  
+
   // Custom name map for non-user-friendly app names
   const nameMap = {
     'msedgewebview2': 'WebView2 (App Container)',
     'ShellExperienceHost': 'Windows Shell Experience',
   };
-  
+
   let formatted = name.replace(/\./g, ' ');
   return nameMap[name] || nameMap[formatted] || formatted;
 }
@@ -2057,7 +2106,7 @@ function bdFmtAppName(name) {
 async function bdLoadSessions() {
   try {
     bdAllSessions = await invoke('get_sessions_for_breakdown');
-  } catch(e) {
+  } catch (e) {
     console.error('get_sessions_for_breakdown failed', e);
     bdAllSessions = [];
   }
@@ -2073,7 +2122,7 @@ async function bdLoadSessions() {
 
 // ── Populate the session picker dropdown ─────────────────────────────────────
 function bdRenderList() {
-  const q    = (document.getElementById('bd-search')?.value || '').toLowerCase();
+  const q = (document.getElementById('bd-search')?.value || '').toLowerCase();
   const sort = document.getElementById('bd-sort')?.value || 'newest';
 
   let filtered = bdAllSessions.filter(s => {
@@ -2084,9 +2133,9 @@ function bdRenderList() {
   });
 
   filtered.sort((a, b) => {
-    if (sort === 'oldest')    return a.session_start.localeCompare(b.session_start);
+    if (sort === 'oldest') return a.session_start.localeCompare(b.session_start);
     if (sort === 'time-high') return b.connected_secs - a.connected_secs;
-    if (sort === 'time-low')  return a.connected_secs - b.connected_secs;
+    if (sort === 'time-low') return a.connected_secs - b.connected_secs;
     return b.session_start.localeCompare(a.session_start); // newest
   });
 
@@ -2102,7 +2151,7 @@ function bdRenderList() {
     const date = bdFmtDate(s.session_start);
     const conn = bdFmtDur(s.connected_secs).padEnd(10, '\u00A0');
     const play = bdFmtDur(s.playback_secs);
-    const tag  = (s.interrupted === 1 || s.interrupted === true) ? '\u00A0\u00A0⚠' : '';
+    const tag = (s.interrupted === 1 || s.interrupted === true) ? '\u00A0\u00A0⚠' : '';
     opt.textContent = `${date}\u00A0\u00A0│\u00A0\u00A0⇄\u00A0Conn:\u00A0${conn}\u00A0\u00A0│\u00A0\u00A0▶\u00A0Play:\u00A0${play}${tag}`;
     if (s.id === prevId) opt.selected = true;
     picker.appendChild(opt);
@@ -2125,7 +2174,7 @@ async function bdSelectSession(id) {
   let bd;
   try {
     bd = await invoke('get_session_breakdown', { sessionId: id });
-  } catch(e) {
+  } catch (e) {
     console.error('get_session_breakdown failed', e);
     return;
   }
@@ -2154,9 +2203,9 @@ function bdRenderDetail(bd, container) {
   }
 
   // Battery drain values
-  const batL0 = s.bat_left_connect,   batL1 = s.bat_left_disc;
-  const batR0 = s.bat_right_connect,  batR1 = s.bat_right_disc;
-  const batC0 = s.bat_case_connect,   batC1 = s.bat_case_disc;
+  const batL0 = s.bat_left_connect, batL1 = s.bat_left_disc;
+  const batR0 = s.bat_right_connect, batR1 = s.bat_right_disc;
+  const batC0 = s.bat_case_connect, batC1 = s.bat_case_disc;
 
   const drainStr = (a, b) => {
     if (a == null || b == null) return '—';
@@ -2293,9 +2342,9 @@ function bdDrawBatteryCurve(s, mode) {
   const dpr = window.devicePixelRatio || 1;
   const W = wrap.clientWidth || 400;
   const H = 240;
-  canvas.width  = W * dpr;
+  canvas.width = W * dpr;
   canvas.height = H * dpr;
-  canvas.style.width  = W + 'px';
+  canvas.style.width = W + 'px';
   canvas.style.height = H + 'px';
 
   const c = canvas.getContext('2d');
@@ -2342,20 +2391,20 @@ function bdDrawBatteryCurve(s, mode) {
     const L0 = s.bat_left_connect, L1 = s.bat_left_disc;
     const R0 = s.bat_right_connect, R1 = s.bat_right_disc;
     const avgStart = (L0 != null && R0 != null) ? Math.round((L0 + R0) / 2) : (L0 ?? R0);
-    const avgEnd   = (L1 != null && R1 != null) ? Math.round((L1 + R1) / 2) : (L1 ?? R1);
+    const avgEnd = (L1 != null && R1 != null) ? Math.round((L1 + R1) / 2) : (L1 ?? R1);
     series = [
-      { label: 'L',   v0: L0,       v1: L1,       color: '#6366f1' },
-      { label: 'R',   v0: R0,       v1: R1,       color: '#4ade80' },
-      { label: 'Avg', v0: avgStart, v1: avgEnd,   color: '#f97316', dashed: true },
+      { label: 'L', v0: L0, v1: L1, color: '#6366f1' },
+      { label: 'R', v0: R0, v1: R1, color: '#4ade80' },
+      { label: 'Avg', v0: avgStart, v1: avgEnd, color: '#f97316', dashed: true },
     ].filter(sr => sr.v0 != null || sr.v1 != null);
   }
 
   series.forEach(sr => {
     const x0 = padL, x1 = padL + chartW;
     const start = sr.v0 ?? sr.v1 ?? 0;
-    const end   = sr.v1 ?? sr.v0 ?? 0;
+    const end = sr.v1 ?? sr.v0 ?? 0;
     const y0 = padT + chartH - (start / 100) * chartH;
-    const y1 = padT + chartH - (end   / 100) * chartH;
+    const y1 = padT + chartH - (end / 100) * chartH;
 
     // Gradient fill (skip for avg/dashed)
     if (!sr.dashed) {
@@ -2418,25 +2467,25 @@ async function bdExport(sessionId, format) {
   let content;
   try {
     content = await invoke('export_session', { sessionId, format });
-  } catch(e) {
+  } catch (e) {
     console.error('export_session failed', e);
     return;
   }
   if (!content) return;
   const mime = format === 'csv' ? 'text/csv' : 'application/json';
-  const ext  = format === 'csv' ? 'csv' : 'json';
+  const ext = format === 'csv' ? 'csv' : 'json';
   const blob = new Blob([content], { type: mime });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
   a.download = `session_${sessionId}.${ext}`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ── Wire up filters & session picker ─────────────────────────────────────────
-document.getElementById('bd-search')?.addEventListener('input',  bdRenderList);
-document.getElementById('bd-sort')?.addEventListener('change',   bdRenderList);
+document.getElementById('bd-search')?.addEventListener('input', bdRenderList);
+document.getElementById('bd-sort')?.addEventListener('change', bdRenderList);
 document.getElementById('bd-session-picker')?.addEventListener('change', e => {
   const id = parseInt(e.target.value);
   if (!isNaN(id)) bdSelectSession(id);
@@ -2511,7 +2560,7 @@ async function loadBatteryGraph() {
       const statusEl = document.getElementById('battery-status-sub');
       const statusText = statusEl ? statusEl.textContent.trim() : '';
       isLive = statusText === 'Connected' || (typeof lastConnected !== 'undefined' && lastConnected);
-    } catch(e) {}
+    } catch (e) { }
   }
 
   // Get battery step size from backend
@@ -2533,7 +2582,7 @@ async function loadBatteryGraph() {
   let rawData = [];
   try {
     rawData = await invoke('get_battery_graph_data', { duration });
-  } catch(e) {
+  } catch (e) {
     console.error('get_battery_graph_data failed', e);
   }
   if (loadToken !== batteryGraphLoadToken) return;
@@ -2557,10 +2606,10 @@ async function loadBatteryGraph() {
   let categories = [];
   let series = [];
 
-  const greenColor  = '#4ade80'; // Left Bud  — green
-  const blueColor   = '#60a5fa'; // Right Bud — blue
+  const greenColor = '#4ade80'; // Left Bud  — green
+  const blueColor = '#60a5fa'; // Right Bud — blue
   const purpleColor = '#a78bfa'; // Case       — purple
-  const whiteColor  = '#fbbf24'; // Average    — amber (high contrast on dark)
+  const whiteColor = '#fbbf24'; // Average    — amber (high contrast on dark)
 
   let colors = [];
 
@@ -2911,19 +2960,19 @@ async function loadBatteryGraph() {
     },
     fill: chartType === 'area'
       ? {
-          type: 'gradient',
-          opacity: 0.9,
-          gradient: {
-            shadeIntensity: 0.35,
-            opacityFrom: 0.42,
-            opacityTo: 0.08,
-            stops: [0, 70, 100]
-          }
+        type: 'gradient',
+        opacity: 0.9,
+        gradient: {
+          shadeIntensity: 0.35,
+          opacityFrom: 0.42,
+          opacityTo: 0.08,
+          stops: [0, 70, 100]
         }
+      }
       : {
-          type: 'solid',
-          opacity: 1
-        },
+        type: 'solid',
+        opacity: 1
+      },
     grid: {
       borderColor: 'rgba(255, 255, 255, 0.08)',
       strokeDashArray: 4,
@@ -3145,94 +3194,94 @@ async function loadBatteryGraph() {
     options.stroke.width = 3;
   }
 
-    if (chartType === 'radar') {
-      // ApexCharts radar has different layout behavior depending on whether
-      // the x-axis categories are numeric/labels. For “any duration”, ensure:
-      // - stable category count/order
-      // - stable 0..100 scale
-      // - consistent polygon fill/stroke rendering
-      const radarCategories = (Array.isArray(categories) && categories.length)
-        ? [...categories]
-        : ['Left Bud', 'Right Bud', 'Case'];
+  if (chartType === 'radar') {
+    // ApexCharts radar has different layout behavior depending on whether
+    // the x-axis categories are numeric/labels. For “any duration”, ensure:
+    // - stable category count/order
+    // - stable 0..100 scale
+    // - consistent polygon fill/stroke rendering
+    const radarCategories = (Array.isArray(categories) && categories.length)
+      ? [...categories]
+      : ['Left Bud', 'Right Bud', 'Case'];
 
-      const radarSeries = JSON.parse(JSON.stringify(series));
+    const radarSeries = JSON.parse(JSON.stringify(series));
 
-      options.chart.type = 'radar';
-      // Make tiny drains visible: plot with a small visual epsilon lift,
-      // but keep tooltip values as the real drains.
-      const MIN_VISIBLE_EPS = Math.max(0.8, (batteryStep && Number(batteryStep) > 0 ? Number(batteryStep) : 5) * 0.2);
-      const liftVisual = (v) => {
-        const num = Number(v);
-        if (!Number.isFinite(num) || num <= 0) return 0;
-        return Math.max(num, MIN_VISIBLE_EPS);
-      };
+    options.chart.type = 'radar';
+    // Make tiny drains visible: plot with a small visual epsilon lift,
+    // but keep tooltip values as the real drains.
+    const MIN_VISIBLE_EPS = Math.max(0.8, (batteryStep && Number(batteryStep) > 0 ? Number(batteryStep) : 5) * 0.2);
+    const liftVisual = (v) => {
+      const num = Number(v);
+      if (!Number.isFinite(num) || num <= 0) return 0;
+      return Math.max(num, MIN_VISIBLE_EPS);
+    };
 
-      const radarSeriesVisual = JSON.parse(JSON.stringify(radarSeries));
-      radarSeriesVisual.forEach(s => {
-        if (Array.isArray(s.data)) s.data = s.data.map(liftVisual);
-      });
+    const radarSeriesVisual = JSON.parse(JSON.stringify(radarSeries));
+    radarSeriesVisual.forEach(s => {
+      if (Array.isArray(s.data)) s.data = s.data.map(liftVisual);
+    });
 
-      options.series = radarSeriesVisual;
+    options.series = radarSeriesVisual;
 
-      // Force radar-specific x/y axis settings for consistent UI
-      options.xaxis = {
-        categories: radarCategories,
-        labels: {
-          show: true,
-          style: { colors: '#888898', fontSize: '11px' },
-          trim: true
-        }
-      };
-
-      options.yaxis = {
-        show: false,
-        min: 0,
-        max: 100,
-        tickAmount: 5
-      };
-
-      options.grid = {
-        show: false
-      };
-
-      options.stroke = {
+    // Force radar-specific x/y axis settings for consistent UI
+    options.xaxis = {
+      categories: radarCategories,
+      labels: {
         show: true,
-        curve: 'smooth',
-        width: 3
-      };
+        style: { colors: '#888898', fontSize: '11px' },
+        trim: true
+      }
+    };
 
-      options.fill = {
-        type: 'solid',
-        opacity: 0.18
-      };
+    options.yaxis = {
+      show: false,
+      min: 0,
+      max: 100,
+      tickAmount: 5
+    };
 
-      options.markers = {
-        size: 5,
-        colors: colors,
-        strokeColors: '#111113',
-        strokeWidth: 2,
-        hover: { size: 7 }
-      };
+    options.grid = {
+      show: false
+    };
 
-      options.legend = {
-        show: true,
-        position: 'top',
-        horizontalAlign: 'center',
-        fontSize: '12px',
-        markers: { radius: 12 },
-        labels: { colors: '#888898' }
-      };
+    options.stroke = {
+      show: true,
+      curve: 'smooth',
+      width: 3
+    };
 
-      // Ensure radar polygons render consistently regardless of duration.
-      options.plotOptions = {
-        radar: {
-          polygons: {
-            strokeColors: 'rgba(255,255,255,0.08)',
-            connectorColors: 'rgba(255,255,255,0.08)'
-          }
+    options.fill = {
+      type: 'solid',
+      opacity: 0.18
+    };
+
+    options.markers = {
+      size: 5,
+      colors: colors,
+      strokeColors: '#111113',
+      strokeWidth: 2,
+      hover: { size: 7 }
+    };
+
+    options.legend = {
+      show: true,
+      position: 'top',
+      horizontalAlign: 'center',
+      fontSize: '12px',
+      markers: { radius: 12 },
+      labels: { colors: '#888898' }
+    };
+
+    // Ensure radar polygons render consistently regardless of duration.
+    options.plotOptions = {
+      radar: {
+        polygons: {
+          strokeColors: 'rgba(255,255,255,0.08)',
+          connectorColors: 'rgba(255,255,255,0.08)'
         }
-      };
-    }
+      }
+    };
+  }
 
   if (batteryChart) {
     batteryChart.destroy();

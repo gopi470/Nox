@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,74 +8,85 @@
   <link rel="stylesheet" href="styles.css" />
   <script src="apexcharts.min.js"></script>
 </head>
+
 <body>
   <div class="shell">
     <!-- Sidebar Navigation -->
     <nav class="sidebar">
       <div class="app-brand">
         <span class="brand-icon">
-          <svg class="brand-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 18v-6a9 9 0 0 1 18 0v6"/>
-            <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
+          <svg class="brand-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
+            <path
+              d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
           </svg>
         </span>
-        <span class="brand-name">No<span class="brand-x">X</span><span id="debug-tag" class="debug-tag" style="display: none;">Debug</span></span>
+        <span class="brand-name">No<span class="brand-x">X</span><span id="debug-tag" class="debug-tag"
+            style="display: none;">Debug</span></span>
       </div>
       <ul class="nav-list">
         <li class="nav-item active" data-page="dashboard">
           <span class="nav-icon">
-            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="7" height="9"/>
-              <rect x="14" y="3" width="7" height="5"/>
-              <rect x="14" y="12" width="7" height="9"/>
-              <rect x="3" y="16" width="7" height="5"/>
+            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="9" />
+              <rect x="14" y="3" width="7" height="5" />
+              <rect x="14" y="12" width="7" height="9" />
+              <rect x="3" y="16" width="7" height="5" />
             </svg>
           </span>
           <span class="nav-label">Dashboard</span>
         </li>
         <li class="nav-item" data-page="battery">
           <span class="nav-icon">
-            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="7" width="16" height="10" rx="2" ry="2"/>
-              <line x1="22" y1="11" x2="22" y2="13"/>
+            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="7" width="16" height="10" rx="2" ry="2" />
+              <line x1="22" y1="11" x2="22" y2="13" />
             </svg>
           </span>
           <span class="nav-label">Battery</span>
         </li>
         <li class="nav-item" data-page="statistics">
           <span class="nav-icon">
-            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="20" x2="18" y2="10"/>
-              <line x1="12" y1="20" x2="12" y2="4"/>
-              <line x1="6" y1="20" x2="6" y2="14"/>
+            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="20" x2="18" y2="10" />
+              <line x1="12" y1="20" x2="12" y2="4" />
+              <line x1="6" y1="20" x2="6" y2="14" />
             </svg>
           </span>
           <span class="nav-label">Statistics</span>
         </li>
         <li class="nav-item" data-page="history">
           <span class="nav-icon">
-            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <polyline points="12 6 12 12 16 14"/>
+            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
             </svg>
           </span>
           <span class="nav-label">History</span>
         </li>
         <li class="nav-item" data-page="breakdown">
           <span class="nav-icon">
-            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="18" height="4" rx="1"/>
-              <rect x="3" y="10" width="11" height="4" rx="1"/>
-              <rect x="3" y="17" width="7" height="4" rx="1"/>
+            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="4" rx="1" />
+              <rect x="3" y="10" width="11" height="4" rx="1" />
+              <rect x="3" y="17" width="7" height="4" rx="1" />
             </svg>
           </span>
           <span class="nav-label">Breakdown</span>
         </li>
         <li class="nav-item" data-page="settings">
           <span class="nav-icon">
-            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
           </span>
           <span class="nav-label">Settings</span>
@@ -121,37 +133,58 @@
           </div>
         </div>
 
-        <div class="dashboard-extras" style="display: flex; gap: 20px; margin-top: 20px; align-items: stretch; flex-wrap: wrap;">
+        <div class="dashboard-extras"
+          style="display: flex; gap: 20px; margin-top: 20px; align-items: stretch; flex-wrap: wrap;">
           <div class="card" style="flex: 1; min-width: 250px; display: flex; flex-direction: column;">
             <div class="status-title" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
               Now Playing
             </div>
-            <div id="live-apps-container" style="display: flex; flex-direction: column; gap: 8px; flex: 1; justify-content: center; min-height: 60px;">
-              <div style="color: var(--muted); font-size: 13px; font-style: italic; text-align: center;">Nothing playing right now</div>
+            <div id="live-apps-container"
+              style="display: flex; flex-direction: column; gap: 8px; flex: 1; justify-content: center; min-height: 60px;">
+              <div style="color: var(--muted); font-size: 13px; font-style: italic; text-align: center;">Nothing playing
+                right now</div>
             </div>
           </div>
-          
+
           <div class="card" style="flex: 1; min-width: 250px; display: flex; flex-direction: column;">
             <div class="status-title" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--green);"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" style="color: var(--green);">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 16v-4"></path>
+                <path d="M12 8h.01"></path>
+              </svg>
               Session Quick Facts
             </div>
             <div style="display: flex; flex-direction: column; flex: 1; justify-content: center; min-height: 60px;">
               <div style="color: var(--text); font-size: 14px; line-height: 1.6;" id="live-facts-text">
-                <span style="color: var(--muted); font-style: italic;">Connect your earbuds to see live session insights here.</span>
+                <span style="color: var(--muted); font-style: italic;">Connect your earbuds to see live session insights
+                  here.</span>
               </div>
             </div>
           </div>
 
           <div class="card" style="flex: 1; min-width: 250px; display: flex; flex-direction: column;">
             <div class="status-title" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #fbbf24;"><path d="M12 2v20"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" style="color: #fbbf24;">
+                <path d="M12 2v20"></path>
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+              </svg>
               Estimated Time Left
             </div>
-            <div style="display: flex; flex-direction: column; flex: 1; justify-content: center; min-height: 60px; text-align: center;">
-              <div style="color: var(--text); font-size: 24px; font-weight: 600; font-family: monospace;" id="live-est-time">
-                <span style="color: var(--muted); font-size: 14px; font-weight: 400; font-family: 'Inter', sans-serif;">—</span>
+            <div
+              style="display: flex; flex-direction: column; flex: 1; justify-content: center; min-height: 60px; text-align: center;">
+              <div style="color: var(--text); font-size: 24px; font-weight: 600; font-family: monospace;"
+                id="live-est-time">
+                <span
+                  style="color: var(--muted); font-size: 14px; font-weight: 400; font-family: 'Inter', sans-serif;">—</span>
               </div>
             </div>
           </div>
@@ -161,32 +194,49 @@
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
             <div>
               <div class="status-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
                 Daily Goal Progress
               </div>
             </div>
-            <div style="font-size: 13px; color: var(--muted);"><span id="live-goal-val" style="color: var(--text); font-weight: 600;">0h 0m</span> / <span id="live-goal-target">3h</span></div>
+            <div style="font-size: 13px; color: var(--muted);"><span id="live-goal-val"
+                style="color: var(--text); font-weight: 600;">0h 0m</span> / <span id="live-goal-target">3h</span></div>
           </div>
-          <div style="position: relative; height: 18px; background: var(--bg3); border-radius: 9px; overflow: hidden; border: 1px solid var(--border);">
-            <div id="live-goal-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), #8b5cf6); border-radius: 9px; transition: width 0.6s ease; position: relative;"></div>
-            <div id="live-goal-pct" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.7); letter-spacing: 0.5px;">0%</div>
+          <div
+            style="position: relative; height: 18px; background: var(--bg3); border-radius: 9px; overflow: hidden; border: 1px solid var(--border);">
+            <div id="live-goal-bar"
+              style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), #8b5cf6); border-radius: 9px; transition: width 0.6s ease; position: relative;">
+            </div>
+            <div id="live-goal-pct"
+              style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.7); letter-spacing: 0.5px;">
+              0%</div>
           </div>
         </div>
       </section>
 
       <!-- ── Battery Page ───────────────────────────────────────── -->
       <section class="page" id="page-battery">
-        <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
+        <div class="page-header"
+          style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
           <div style="display: flex; flex-direction: column; min-width: 0;">
             <h1 class="page-title">Battery</h1>
             <p class="page-sub" style="margin: 0;">Real-time level monitoring and status diagnostics</p>
           </div>
-          <span id="bat-last-updated" style="font-size: 11px; color: var(--muted); white-space: nowrap; display: none; margin-left: auto;">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:middle;margin-right:3px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span id="bat-last-updated"
+            style="font-size: 11px; color: var(--muted); white-space: nowrap; display: none; margin-left: auto;">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round"
+              style="display:inline;vertical-align:middle;margin-right:3px;">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
             Updated just now
           </span>
         </div>
-        
+
         <div class="battery-page-container">
           <!-- Battery Card -->
           <div class="card battery-card" id="battery-card">
@@ -209,13 +259,15 @@
 
               <!-- Case -->
               <div class="battery-device-col" id="bat-case-container">
-                <img src="assets/donphan_black_case.webp" alt="Case" class="battery-device-img case-img" id="bat-case-img" />
+                <img src="assets/donphan_black_case.webp" alt="Case" class="battery-device-img case-img"
+                  id="bat-case-img" />
                 <div class="battery-progress-track" id="bat-case-track">
                   <div class="battery-progress-fill" id="bat-case-progress"></div>
                   <div class="battery-progress-fill-split" id="bat-case-split">
                     <div class="split-line"></div>
-                    <svg class="bolt" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                    <svg class="bolt" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"
+                      aria-hidden="true">
+                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
                     </svg>
                     <div class="split-line"></div>
                   </div>
@@ -228,7 +280,8 @@
 
               <!-- Right Bud -->
               <div class="battery-device-col" id="bat-right-container">
-                <img src="assets/donphan_black_right.webp" alt="Right Bud" class="battery-device-img" id="bat-right-img" />
+                <img src="assets/donphan_black_right.webp" alt="Right Bud" class="battery-device-img"
+                  id="bat-right-img" />
                 <div class="battery-progress-track">
                   <div class="battery-progress-fill" id="bat-right-progress"></div>
                 </div>
@@ -281,9 +334,10 @@
             <div class="graph-wrapper">
               <div id="battery-graph-canvas" class="battery-graph-canvas"></div>
               <div id="graph-empty-state" class="graph-empty-state">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.4;">
-                  <path d="M3 3v18h18"/>
-                  <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.4;">
+                  <path d="M3 3v18h18" />
+                  <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3" />
                 </svg>
                 <p>No battery log data found for this range.</p>
               </div>
@@ -298,10 +352,13 @@
           <h1 class="page-title">
             Statistics
             <span id="streak-badge-container" class="streak-badge" style="display: none;">
-              <svg class="streak-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
+              <svg class="streak-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path
+                  d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
               </svg>
-              <span class="streak-text"><span id="streak-count">0</span><span id="streak-label" class="streak-label">Day Streak</span></span>
+              <span class="streak-text"><span id="streak-count">0</span><span id="streak-label" class="streak-label">Day
+                  Streak</span></span>
             </span>
           </h1>
           <p class="page-sub">Historical and current interval statistics</p>
@@ -310,7 +367,8 @@
           <div class="stats-chart-header">
             <div class="stat-title">Daily Activity</div>
             <div class="stats-week-nav">
-              <button id="stats-week-prev" class="btn stats-week-btn" type="button" aria-label="Previous week">‹</button>
+              <button id="stats-week-prev" class="btn stats-week-btn" type="button"
+                aria-label="Previous week">‹</button>
               <span id="stats-week-range" class="stats-week-range">Last 7 days</span>
               <button id="stats-week-next" class="btn stats-week-btn" type="button" aria-label="Next week">›</button>
             </div>
@@ -325,26 +383,34 @@
           <div class="card stat-card">
             <div class="stat-title">Today</div>
             <div class="divider"></div>
-            <div class="stat-row"><span class="stat-lbl">Connection time</span><span class="stat-val mono" id="s-today-conn">—</span></div>
-            <div class="stat-row"><span class="stat-lbl">Playback time</span><span class="stat-val mono green" id="s-today-play">—</span></div>
+            <div class="stat-row"><span class="stat-lbl">Connection time</span><span class="stat-val mono"
+                id="s-today-conn">—</span></div>
+            <div class="stat-row"><span class="stat-lbl">Playback time</span><span class="stat-val mono green"
+                id="s-today-play">—</span></div>
           </div>
           <div class="card stat-card">
             <div class="stat-title">This Week</div>
             <div class="divider"></div>
-            <div class="stat-row"><span class="stat-lbl">Connection time</span><span class="stat-val mono" id="s-week-conn">—</span></div>
-            <div class="stat-row"><span class="stat-lbl">Playback time</span><span class="stat-val mono green" id="s-week-play">—</span></div>
+            <div class="stat-row"><span class="stat-lbl">Connection time</span><span class="stat-val mono"
+                id="s-week-conn">—</span></div>
+            <div class="stat-row"><span class="stat-lbl">Playback time</span><span class="stat-val mono green"
+                id="s-week-play">—</span></div>
           </div>
           <div class="card stat-card">
             <div class="stat-title">This Month</div>
             <div class="divider"></div>
-            <div class="stat-row"><span class="stat-lbl">Connection time</span><span class="stat-val mono" id="s-month-conn">—</span></div>
-            <div class="stat-row"><span class="stat-lbl">Playback time</span><span class="stat-val mono green" id="s-month-play">—</span></div>
+            <div class="stat-row"><span class="stat-lbl">Connection time</span><span class="stat-val mono"
+                id="s-month-conn">—</span></div>
+            <div class="stat-row"><span class="stat-lbl">Playback time</span><span class="stat-val mono green"
+                id="s-month-play">—</span></div>
           </div>
           <div class="card stat-card">
             <div class="stat-title">Lifetime</div>
             <div class="divider"></div>
-            <div class="stat-row"><span class="stat-lbl">Connection time</span><span class="stat-val mono" id="s-life-conn">—</span></div>
-            <div class="stat-row"><span class="stat-lbl">Playback time</span><span class="stat-val mono green" id="s-life-play">—</span></div>
+            <div class="stat-row"><span class="stat-lbl">Connection time</span><span class="stat-val mono"
+                id="s-life-conn">—</span></div>
+            <div class="stat-row"><span class="stat-lbl">Playback time</span><span class="stat-val mono green"
+                id="s-life-play">—</span></div>
           </div>
         </div>
       </section>
@@ -387,11 +453,14 @@
           <div style="display:flex; gap:8px; align-items:center; width:100%;">
             <!-- Search -->
             <div style="position:relative; flex:1; min-width:0;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; left:9px; top:50%; transform:translateY(-50%); color:var(--muted); pointer-events:none;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round"
+                style="position:absolute; left:9px; top:50%; transform:translateY(-50%); color:var(--muted); pointer-events:none;">
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
               </svg>
-              <input type="search" id="bd-search" class="input-field" placeholder="Search…" style="padding-left:29px; width:100%;" />
+              <input type="search" id="bd-search" class="input-field" placeholder="Search…"
+                style="padding-left:29px; width:100%;" />
             </div>
             <!-- Sort -->
             <select id="bd-sort" class="input-field" style="flex-shrink:0; width:120px; font-size:11px;">
@@ -410,10 +479,11 @@
         <!-- Detail panel (full width) -->
         <div class="bd-detail" id="bd-detail">
           <div class="bd-empty-state">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--border);margin-bottom:12px;">
-              <rect x="3" y="3" width="18" height="4" rx="1"/>
-              <rect x="3" y="10" width="11" height="4" rx="1"/>
-              <rect x="3" y="17" width="7" height="4" rx="1"/>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"
+              stroke-linecap="round" stroke-linejoin="round" style="color:var(--border);margin-bottom:12px;">
+              <rect x="3" y="3" width="18" height="4" rx="1" />
+              <rect x="3" y="10" width="11" height="4" rx="1" />
+              <rect x="3" y="17" width="7" height="4" rx="1" />
             </svg>
             <div style="color:var(--muted);font-size:13px;">Select a session to view its breakdown</div>
           </div>
@@ -431,9 +501,11 @@
           <div class="settings-control-row">
             <div>
               <div class="set-title">Daily Playback Goal</div>
-              <div class="set-desc">Set your target daily playback time (in hours), up to 12 hours. Days that meet this target count toward your streak.</div>
+              <div class="set-desc">Set your target daily playback time (in hours), up to 12 hours. Days that meet this
+                target count toward your streak.</div>
             </div>
-            <input type="number" id="goal-input" min="0.5" max="12" step="0.5" class="input-field" style="width: 80px;" value="2.0" />
+            <input type="number" id="goal-input" min="0.5" max="12" step="0.5" class="input-field" style="width: 80px;"
+              value="2.0" />
           </div>
         </div>
         <div class="card settings-card">
@@ -443,11 +515,13 @@
               <div class="set-desc">Select from paired devices or specify a custom one.</div>
             </div>
             <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end; min-width: 180px;">
-              <select id="device-name-select" class="input-field" style="width: 180px; text-overflow: ellipsis; padding-right: 8px;">
+              <select id="device-name-select" class="input-field"
+                style="width: 180px; text-overflow: ellipsis; padding-right: 8px;">
                 <option value="CMF Buds 2a">CMF Buds 2a</option>
                 <option value="__custom__">Type Custom Name...</option>
               </select>
-              <input type="text" id="device-name-input" class="input-field" style="width: 180px; display: none;" placeholder="Enter custom name..." />
+              <input type="text" id="device-name-input" class="input-field" style="width: 180px; display: none;"
+                placeholder="Enter custom name..." />
             </div>
           </div>
         </div>
@@ -459,6 +533,19 @@
             </div>
             <label class="toggle-switch">
               <input type="checkbox" id="notification-toggle" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="card settings-card">
+          <div class="settings-control-row">
+            <div>
+              <div class="set-title">Enable on Startup</div>
+              <div class="set-desc">Launch Nox automatically when you sign in to Windows. Manageable from Task Manager →
+                Startup Apps.</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="startup-toggle" />
               <span class="slider"></span>
             </label>
           </div>
@@ -485,7 +572,8 @@
           <div class="settings-control-row">
             <div>
               <div class="set-title">Font Style</div>
-              <div class="set-desc">Default keeps the current font theme. NDot applies the Nothing-style font where it fits.</div>
+              <div class="set-desc">Default keeps the current font theme. NDot applies the Nothing-style font where it
+                fits.</div>
             </div>
             <select id="font-style-select" class="input-field" style="width: 180px;">
               <option value="default">Default</option>
@@ -497,7 +585,8 @@
           <div class="settings-control-row">
             <div>
               <div class="set-title">Battery Drain Interval</div>
-              <div class="set-desc">Matches the step size of earbud battery reporting (e.g. 5% jumps for CMF Buds 2a).</div>
+              <div class="set-desc">Matches the step size of earbud battery reporting (e.g. 5% jumps for CMF Buds 2a).
+              </div>
             </div>
             <select id="battery-step-select" class="input-field" style="width: 180px;">
               <option value="1">1%</option>
@@ -512,11 +601,13 @@
               <div class="set-title">Earbud Query Log</div>
               <div class="set-desc">View recent battery queries sent to the earbuds in a popup.</div>
             </div>
-            <button class="btn btn-icon-label" id="query-log-btn" style="flex-shrink:0; white-space:nowrap; padding: 7px 14px;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 16v-4"/>
-                <path d="M12 8h.01"/>
+            <button class="btn btn-icon-label" id="query-log-btn"
+              style="flex-shrink:0; white-space:nowrap; padding: 7px 14px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 16v-4" />
+                <path d="M12 8h.01" />
               </svg>
               View Log
             </button>
@@ -526,22 +617,25 @@
           <div class="settings-control-row" style="flex-wrap: wrap;">
             <div>
               <div class="set-title">Import / Export Data</div>
-              <div class="set-desc">Back up or restore everything: sessions, history, logs, app audio events, and settings.</div>
+              <div class="set-desc">Back up or restore everything: sessions, history, logs, app audio events, and
+                settings.</div>
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
               <button class="btn btn-icon-label" id="export-data-btn" style="white-space:nowrap; padding: 7px 14px;">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="17 14 12 9 7 14"/>
-                  <line x1="12" y1="9" x2="12" y2="21"/>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 14 12 9 7 14" />
+                  <line x1="12" y1="9" x2="12" y2="21" />
                 </svg>
                 Export All
               </button>
               <button class="btn btn-icon-label" id="import-data-btn" style="white-space:nowrap; padding: 7px 14px;">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
                 Import
               </button>
@@ -552,14 +646,17 @@
           <div class="settings-control-row">
             <div>
               <div class="set-title">Reset All Data</div>
-              <div class="set-desc">Permanently wipe all session history and statistics. Requires Windows password confirmation. This cannot be undone.</div>
+              <div class="set-desc">Permanently wipe all session history and statistics. Requires Windows password
+                confirmation. This cannot be undone.</div>
             </div>
-            <button class="btn btn-danger btn-icon-label" id="reset-btn" style="flex-shrink:0; white-space:nowrap; padding: 7px 14px;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                <path d="M10 11v6M14 11v6"/>
-                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+            <button class="btn btn-danger btn-icon-label" id="reset-btn"
+              style="flex-shrink:0; white-space:nowrap; padding: 7px 14px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6M14 11v6" />
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
               </svg>
               Reset
             </button>
@@ -584,14 +681,16 @@
   <div class="dialog-overlay" id="dialog" hidden>
     <div class="dialog-box">
       <div class="dialog-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
-          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-          <line x1="12" y1="9" x2="12" y2="13"/>
-          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          <line x1="12" y1="9" x2="12" y2="13" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
         </svg>
         Reset All Data?
       </div>
-      <div class="dialog-msg">This will permanently delete all session history and statistics. You will need to verify your Windows password to proceed.</div>
+      <div class="dialog-msg">This will permanently delete all session history and statistics. You will need to verify
+        your Windows password to proceed.</div>
       <div class="dialog-btns">
         <button class="btn" id="dialog-cancel">Cancel</button>
         <button class="btn btn-danger" id="dialog-confirm">Continue →</button>
@@ -603,15 +702,17 @@
   <div class="dialog-overlay" id="auth-dialog" hidden>
     <div class="dialog-box">
       <div class="dialog-title" style="display:flex;align-items:center;gap:10px;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
         </svg>
         Windows Authentication
       </div>
-      <div class="dialog-msg">Enter your Windows account password for <strong id="auth-username"></strong> to authorise this destructive action.</div>
+      <div class="dialog-msg">Enter your Windows account password for <strong id="auth-username"></strong> to authorise
+        this destructive action.</div>
       <input type="password" id="auth-password-input" class="input-field" placeholder="Windows password…"
-             style="width:100%;margin:14px 0 6px;box-sizing:border-box;" autocomplete="current-password" />
+        style="width:100%;margin:14px 0 6px;box-sizing:border-box;" autocomplete="current-password" />
       <div id="auth-error" style="display:none;color:var(--danger,#f87171);font-size:0.8rem;margin-bottom:10px;">
         ✕ Incorrect password. Please try again.
       </div>
@@ -626,8 +727,9 @@
   <div class="dialog-overlay" id="reset-success-dialog" hidden>
     <div class="dialog-box">
       <div class="dialog-title" style="display:flex;align-items:center;gap:10px;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 6L9 17l-5-5"/>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6L9 17l-5-5" />
         </svg>
         Reset Complete
       </div>
@@ -643,10 +745,11 @@
     <div class="dialog-box query-log-box">
       <div class="dialog-title" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
         <span style="display:flex;align-items:center;gap:10px;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <path d="M12 16v-4"/>
-            <path d="M12 8h.01"/>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 16v-4" />
+            <path d="M12 8h.01" />
           </svg>
           Earbud Query Log
         </span>
@@ -665,15 +768,17 @@
   <div class="dialog-overlay" id="export-info-dialog" hidden>
     <div class="dialog-box">
       <div class="dialog-title" style="display:flex;align-items:center;gap:10px;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2a10 10 0 1 0 10 10"/>
-          <path d="M12 16v-4"/>
-          <path d="M12 8h.01"/>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a10 10 0 1 0 10 10" />
+          <path d="M12 16v-4" />
+          <path d="M12 8h.01" />
         </svg>
         Export All Data
       </div>
       <div class="dialog-msg">
-        This will export sessions, daily history, app audio events, query logs, and settings into a local JSON backup file.
+        This will export sessions, daily history, app audio events, query logs, and settings into a local JSON backup
+        file.
       </div>
       <div class="dialog-btns">
         <button class="btn" id="export-info-cancel">Cancel</button>
@@ -686,8 +791,9 @@
   <div class="dialog-overlay" id="export-success-dialog" hidden>
     <div class="dialog-box">
       <div class="dialog-title" style="display:flex;align-items:center;gap:10px;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 6L9 17l-5-5"/>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6L9 17l-5-5" />
         </svg>
         Export Complete
       </div>
@@ -702,15 +808,17 @@
   <div class="dialog-overlay" id="import-info-dialog" hidden>
     <div class="dialog-box">
       <div class="dialog-title" style="display:flex;align-items:center;gap:10px;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-          <line x1="12" y1="9" x2="12" y2="13"/>
-          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          <line x1="12" y1="9" x2="12" y2="13" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
         </svg>
         Import Data
       </div>
       <div class="dialog-msg">
-        This will replace the current local data with the contents of the backup file you select. Sessions, history, logs, app audio events, and settings will be restored.
+        This will replace the current local data with the contents of the backup file you select. Sessions, history,
+        logs, app audio events, and settings will be restored.
       </div>
       <div class="dialog-btns">
         <button class="btn" id="import-info-cancel">Cancel</button>
@@ -723,8 +831,9 @@
   <div class="dialog-overlay" id="import-success-dialog" hidden>
     <div class="dialog-box">
       <div class="dialog-title" style="display:flex;align-items:center;gap:10px;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 6L9 17l-5-5"/>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6L9 17l-5-5" />
         </svg>
         Import Complete
       </div>
@@ -738,4 +847,5 @@
   <input type="file" id="import-data-file" accept=".json,application/json" hidden />
   <script src="main.js"></script>
 </body>
+
 </html>

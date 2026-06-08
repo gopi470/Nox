@@ -7,12 +7,34 @@ mod tracker;
 mod spp;
 
 use std::sync::Arc;
-use tauri::{Manager, State, AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_autostart::{ManagerExt, MacosLauncher};
+
+
 use tracker::{Tracker, Snapshot};
 use db::SessionRow;
 use chrono::Local;
 
 type TrackerState = Arc<Tracker>;
+
+fn settings_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(std::env::var("APPDATA").unwrap_or_else(|_| ".".into()))
+        .join("EarbudsTracker")
+}
+
+fn read_startup_enabled_from_disk() -> bool {
+    let path = settings_dir().join("startup_enabled.txt");
+    std::fs::read_to_string(&path)
+        .ok()
+        .map(|c| c.trim().eq_ignore_ascii_case("true") || c.trim() == "1")
+        .unwrap_or(false)
+}
+
+fn write_startup_enabled_to_disk(enabled: bool) {
+    let dir = settings_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::write(dir.join("startup_enabled.txt"), if enabled { "true" } else { "false" });
+}
 
 // ── Tauri commands (called from JS frontend) ──────────────────────────────────
 
@@ -274,6 +296,32 @@ fn is_debug() -> bool {
     cfg!(debug_assertions)
 }
 
+// ── Startup (autostart) commands ─────────────────────────────────────────────
+
+#[tauri::command]
+fn get_startup_enabled(app: AppHandle) -> bool {
+    // Prefer persisted user preference; fall back to the OS-registered state.
+    let pref = read_startup_enabled_from_disk();
+    if pref {
+        return true;
+    }
+    app.autolaunch().is_enabled().unwrap_or(false)
+}
+
+#[tauri::command]
+fn set_startup_enabled(enabled: bool, app: AppHandle) -> bool {
+    let manager = app.autolaunch();
+    let result = if enabled {
+        manager.enable()
+    } else {
+        manager.disable()
+    };
+    if result.is_ok() {
+        write_startup_enabled_to_disk(enabled);
+    }
+    result.is_ok()
+}
+
 // ── Session Breakdown commands ──────────────────────────────────────────────
 
 #[tauri::command]
@@ -369,11 +417,29 @@ pub fn run() {
     }
     let tracker = Arc::new(Tracker::new(&initial_device, initial_interval, initial_step));
 
+    // Honour persisted "Enable on Startup" preference and reflect it in the OS registry.
+    let initial_startup_enabled = read_startup_enabled_from_disk();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec!["--silent"]),
+        ))
         .manage(Arc::clone(&tracker))
         .setup(move |app| {
             let handle = app.handle().clone();
+
+            // Reflect the persisted "Enable on Startup" preference in the OS registry.
+            // This keeps the registry state in sync with the user's last choice and
+            // ensures the app appears in Task Manager → Startup Apps for installed builds.
+            let auto_manager = handle.autolaunch();
+            let currently_enabled = auto_manager.is_enabled().unwrap_or(false);
+            if initial_startup_enabled && !currently_enabled {
+                let _ = auto_manager.enable();
+            } else if !initial_startup_enabled && currently_enabled {
+                let _ = auto_manager.disable();
+            }
 
             #[cfg(target_os = "windows")]
             {
@@ -475,7 +541,8 @@ pub fn run() {
             get_battery_interval, set_battery_interval,
             get_battery_step, set_battery_step,
             get_battery_graph_data, get_active_audio_apps,
-            get_query_log, export_all_data, import_all_data
+            get_query_log, export_all_data, import_all_data,
+            get_startup_enabled, set_startup_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
