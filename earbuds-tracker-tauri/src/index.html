@@ -614,6 +614,27 @@
           </div>
         </div>
         <div class="card settings-card">
+          <div class="settings-control-row" style="flex-wrap: nowrap; gap: 12px; align-items: center;">
+            <div style="flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <div class="set-title">Auto Backup</div>
+              <div class="set-desc" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                Saved to <code>%APPDATA%\EarbudsTracker\AutoBackup\</code> and your Downloads folder.
+                <em>Never</em> disables auto backup.
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; flex-shrink: 0; margin-left: auto;">
+              <select id="auto-backup-duration-select" class="input-field" style="width: 180px;">
+                <option value="never">Never</option>
+                <option value="1_day">1 Day</option>
+                <option value="5_days">5 Days</option>
+                <option value="1_week">1 Week</option>
+                <option value="2_weeks">2 Weeks</option>
+                <option value="1_month">1 Month</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="card settings-card">
           <div class="settings-control-row" style="flex-wrap: wrap;">
             <div>
               <div class="set-title">Import / Export Data</div>
@@ -666,7 +687,7 @@
           <div>
             <div class="set-title">About Nox</div>
             <div class="set-desc">
-              Version 2.0 — Rust + Tauri (WebView2)<br>
+              Version <span id="app-version">…</span> — Rust + Tauri (WebView2)<br>
               Tracks Bluetooth connection state and audio playback times.<br>
               Data stored in <code>%APPDATA%\EarbudsTracker\tracker.db</code> for compatibility.
             </div>

@@ -57,6 +57,10 @@ const invoke = (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.co
     });
   }
   if (cmd === 'import_all_data') return true;
+  if (cmd === 'get_app_version') return '1.0.0';
+  if (cmd === 'get_auto_backup_settings') return { enabled: false, interval: 'never' };
+  if (cmd === 'set_auto_backup_settings') return { enabled: !!args?.enabled, interval: args?.interval || 'never' };
+  if (cmd === 'run_auto_backup') return { exported_at: new Date().toISOString(), auto_backup_path: '', download_path: '', sessions: 0, daily_stats: 0, app_audio_events: 0, query_logs: 0 };
   return [];
 });
 const event = window.__TAURI__ && window.__TAURI__.event;
@@ -319,6 +323,55 @@ async function initBatteryStepSelect() {
 }
 
 initBatteryStepSelect();
+
+// The duration dropdown IS the toggle: "Never" turns auto backup off, any
+// other option turns it on with the matching interval.
+async function initAutoBackupSettings() {
+  const select = document.getElementById('auto-backup-duration-select');
+  if (!select) return;
+
+  let prev = select.value;
+
+  try {
+    const settings = await invoke('get_auto_backup_settings');
+    if (settings && typeof settings.interval === 'string') {
+      select.value = settings.interval;
+      prev = settings.interval;
+    }
+  } catch (e) {
+    console.error('get_auto_backup_settings failed', e);
+  }
+
+  const persist = async () => {
+    const interval = select.value;
+    try {
+      const updated = await invoke('set_auto_backup_settings', { interval });
+      if (updated && typeof updated.interval === 'string') {
+        select.value = updated.interval;
+      }
+    } catch (err) {
+      console.error('set_auto_backup_settings failed', err);
+      select.value = prev;
+    }
+  };
+
+  select.addEventListener('change', persist);
+}
+
+initAutoBackupSettings();
+
+// Populate the About section's version dynamically from the Tauri config.
+async function initAppVersion() {
+  const el = document.getElementById('app-version');
+  if (!el) return;
+  try {
+    const version = await invoke('get_app_version');
+    if (version) el.textContent = String(version);
+  } catch (e) {
+    console.error('get_app_version failed', e);
+  }
+}
+initAppVersion();
 
 function closeQueryLogDialog() {
   if (queryLogDialog) {

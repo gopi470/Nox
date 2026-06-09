@@ -9,6 +9,7 @@ mod spp;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::{ManagerExt, MacosLauncher};
+use serde::Deserialize;
 
 
 use tracker::{Tracker, Snapshot};
@@ -25,7 +26,6 @@ fn settings_dir() -> std::path::PathBuf {
 fn settings_file() -> std::path::PathBuf {
     settings_dir().join("settings.json")
 }
-
 // Unified application settings, persisted in `settings.json` under the OS app-data dir.
 // Fields use `serde(default)` so older installs that are missing keys still load cleanly.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -40,12 +40,17 @@ pub struct AppSettings {
     pub startup_enabled: bool,
     #[serde(default = "default_desktop_notifications")]
     pub desktop_notifications: bool,
+    #[serde(default)]
+    pub auto_backup_enabled: bool,
+    #[serde(default = "default_auto_backup_interval")]
+    pub auto_backup_interval: String,
 }
 
 fn default_battery_interval() -> u64 { 300 }
 fn default_battery_step() -> u8 { 5 }
 fn default_target_device() -> String { "CMF Buds 2a".to_string() }
 fn default_desktop_notifications() -> bool { true }
+fn default_auto_backup_interval() -> String { "never".to_string() }
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -55,6 +60,55 @@ impl Default for AppSettings {
             target_device: default_target_device(),
             startup_enabled: false,
             desktop_notifications: default_desktop_notifications(),
+            auto_backup_enabled: false,
+            auto_backup_interval: default_auto_backup_interval(),
+        }
+    }
+}
+
+// Auto Backup interval identifiers. "never" disables the feature.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoBackupInterval {
+    Never,
+    OneDay,
+    FiveDays,
+    OneWeek,
+    TwoWeeks,
+    OneMonth,
+}
+
+impl AutoBackupInterval {
+    fn as_key(self) -> &'static str {
+        match self {
+            AutoBackupInterval::Never => "never",
+            AutoBackupInterval::OneDay => "1_day",
+            AutoBackupInterval::FiveDays => "5_days",
+            AutoBackupInterval::OneWeek => "1_week",
+            AutoBackupInterval::TwoWeeks => "2_weeks",
+            AutoBackupInterval::OneMonth => "1_month",
+        }
+    }
+
+    fn parse(value: &str) -> Self {
+        match value {
+            "1_day" => AutoBackupInterval::OneDay,
+            "5_days" => AutoBackupInterval::FiveDays,
+            "1_week" => AutoBackupInterval::OneWeek,
+            "2_weeks" => AutoBackupInterval::TwoWeeks,
+            "1_month" => AutoBackupInterval::OneMonth,
+            _ => AutoBackupInterval::Never,
+        }
+    }
+
+    fn duration_secs(self) -> Option<u64> {
+        match self {
+            AutoBackupInterval::Never => None,
+            AutoBackupInterval::OneDay => Some(24 * 60 * 60),
+            AutoBackupInterval::FiveDays => Some(5 * 24 * 60 * 60),
+            AutoBackupInterval::OneWeek => Some(7 * 24 * 60 * 60),
+            AutoBackupInterval::TwoWeeks => Some(14 * 24 * 60 * 60),
+            AutoBackupInterval::OneMonth => Some(30 * 24 * 60 * 60),
         }
     }
 }
@@ -96,6 +150,62 @@ fn read_startup_enabled_from_disk() -> bool {
 
 fn write_startup_enabled_to_disk(enabled: bool) {
     update_settings(|s| s.startup_enabled = enabled);
+}
+
+// ── Auto Backup scheduler helpers ──────────────────────────────────────────────
+//
+// The scheduler stores the timestamp of the last successful auto backup in a
+// small sibling file (`auto_backup_state.json`) so the interval countdown
+// survives app restarts without polluting the main `AppSettings` struct.
+
+fn auto_backup_state_file() -> std::path::PathBuf {
+    settings_dir().join("auto_backup_state.json")
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+struct AutoBackupState {
+    #[serde(default)]
+    last_run_at: Option<String>,
+}
+
+fn load_auto_backup_state() -> AutoBackupState {
+    match std::fs::read_to_string(auto_backup_state_file()) {
+        Ok(raw) => serde_json::from_str::<AutoBackupState>(&raw).unwrap_or_default(),
+        Err(_) => AutoBackupState::default(),
+    }
+}
+
+fn save_auto_backup_state(state: &AutoBackupState) {
+    let _ = std::fs::create_dir_all(settings_dir());
+    if let Ok(pretty) = serde_json::to_string_pretty(state) {
+        let _ = std::fs::write(auto_backup_state_file(), pretty);
+    }
+}
+
+fn parse_rfc3339_to_epoch(value: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| dt.timestamp())
+}
+
+fn auto_backup_due(enabled: bool, interval_key: &str, last_run: Option<&str>) -> bool {
+    if !enabled {
+        return false;
+    }
+    let secs = AutoBackupInterval::parse(interval_key).duration_secs();
+    let secs = match secs {
+        Some(s) => s,
+        None => return false, // "never" or unknown
+    };
+    let last = last_run.and_then(parse_rfc3339_to_epoch).unwrap_or(0);
+    let now = Local::now().timestamp();
+    now - last >= secs as i64
+}
+
+// Run an auto backup and return the AutoBackup folder path (for scheduler logging).
+fn run_auto_backup_now_opt_path() -> Option<String> {
+    let result = run_auto_backup_now();
+    Some(result.auto_backup_path)
 }
 
 // ── Tauri commands (called from JS frontend) ──────────────────────────────────
@@ -163,38 +273,69 @@ fn get_query_log(state: State<TrackerState>) -> Vec<db::QueryLogRow> {
     state.get_query_log()
 }
 
-#[tauri::command]
-fn export_all_data() -> ExportResult {
+// Build a JSON backup payload from the current database state. Shared by
+// manual exports (export_all_data) and the auto-backup scheduler.
+fn build_backup_json() -> (String, usize, usize, usize, usize, String) {
     let backup = db::export_backup();
     let exported_at = Local::now().to_rfc3339();
     let pretty = serde_json::to_string_pretty(&backup).unwrap_or_default();
+    (
+        pretty,
+        backup.sessions.len(),
+        backup.daily_stats.len(),
+        backup.app_audio_events.len(),
+        backup.query_logs.len(),
+        exported_at,
+    )
+}
+
+// Build the timestamped backup filename (e.g. "backup_2026-06-08_14-30-00.json").
+fn backup_filename() -> String {
+    format!(
+        "backup_{}.json",
+        Local::now().format("%Y-%m-%d_%H-%M-%S")
+    )
+}
+
+fn write_backup_to_dir(dir: &std::path::Path, filename: &str, pretty: &str) -> std::path::PathBuf {
+    let _ = std::fs::create_dir_all(dir);
+    let path = dir.join(filename);
+    let _ = std::fs::write(&path, pretty);
+    path
+}
+
+fn downloads_dir() -> std::path::PathBuf {
+    std::env::var("USERPROFILE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("Downloads")
+}
+
+#[tauri::command]
+fn export_all_data() -> ExportResult {
+    let (pretty, sessions, daily_stats, app_audio_events, query_logs, exported_at) =
+        build_backup_json();
     let filename = format!(
         "nox-backup-{}.json",
         Local::now().format("%Y-%m-%d_%H-%M-%S")
     );
 
     let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".into());
-    let primary_dir = std::path::PathBuf::from(appdata).join("EarbudsTracker").join("exports");
-    let _ = std::fs::create_dir_all(&primary_dir);
-    let primary_path = primary_dir.join(&filename);
-    let _ = std::fs::write(&primary_path, &pretty);
+    let primary_dir = std::path::PathBuf::from(appdata)
+        .join("EarbudsTracker")
+        .join("exports");
+    let primary_path = write_backup_to_dir(&primary_dir, &filename, &pretty);
 
-    let downloads_dir = std::env::var("USERPROFILE")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::path::PathBuf::from("."))
-        .join("Downloads");
-    let _ = std::fs::create_dir_all(&downloads_dir);
-    let downloads_path = downloads_dir.join(&filename);
-    let _ = std::fs::write(&downloads_path, &pretty);
+    let downloads_path = write_backup_to_dir(&downloads_dir(), &filename, &pretty);
 
     ExportResult {
         exported_at,
         export_path: primary_path.to_string_lossy().to_string(),
         download_path: downloads_path.to_string_lossy().to_string(),
-        sessions: backup.sessions.len(),
-        daily_stats: backup.daily_stats.len(),
-        app_audio_events: backup.app_audio_events.len(),
-        query_logs: backup.query_logs.len(),
+        sessions,
+        daily_stats,
+        app_audio_events,
+        query_logs,
     }
 }
 
@@ -202,6 +343,42 @@ fn export_all_data() -> ExportResult {
 struct ExportResult {
     exported_at: String,
     export_path: String,
+    download_path: String,
+    sessions: usize,
+    daily_stats: usize,
+    app_audio_events: usize,
+    query_logs: usize,
+}
+
+// Runs an auto-backup write to both target folders and returns a summary.
+// Used by the scheduler thread and exposed to the frontend for manual triggers.
+fn run_auto_backup_now() -> AutoBackupResult {
+    let (pretty, sessions, daily_stats, app_audio_events, query_logs, exported_at) =
+        build_backup_json();
+    let filename = backup_filename();
+
+    let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".into());
+    let auto_dir = std::path::PathBuf::from(appdata)
+        .join("EarbudsTracker")
+        .join("AutoBackup");
+    let auto_path = write_backup_to_dir(&auto_dir, &filename, &pretty);
+    let downloads_path = write_backup_to_dir(&downloads_dir(), &filename, &pretty);
+
+    AutoBackupResult {
+        exported_at,
+        auto_backup_path: auto_path.to_string_lossy().to_string(),
+        download_path: downloads_path.to_string_lossy().to_string(),
+        sessions,
+        daily_stats,
+        app_audio_events,
+        query_logs,
+    }
+}
+
+#[derive(serde::Serialize)]
+struct AutoBackupResult {
+    exported_at: String,
+    auto_backup_path: String,
     download_path: String,
     sessions: usize,
     daily_stats: usize,
@@ -369,6 +546,60 @@ fn set_startup_enabled(enabled: bool, app: AppHandle) -> bool {
     result.is_ok()
 }
 
+// ── App metadata ──────────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn get_app_version() -> String {
+    // Source the version from the bundled crate metadata at compile time so
+    // the UI never has to hardcode it. In Tauri v2 `Config::version` is
+    // optional and may be absent, so the most reliable source is the
+    // `CARGO_PKG_VERSION` env var emitted by Cargo from `Cargo.toml`.
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+// ── Auto Backup commands ──────────────────────────────────────────────────────
+
+#[derive(serde::Serialize)]
+struct AutoBackupSettings {
+    enabled: bool,
+    interval: String,
+}
+
+#[tauri::command]
+fn get_auto_backup_settings() -> AutoBackupSettings {
+    let s = load_settings();
+    AutoBackupSettings {
+        enabled: s.auto_backup_enabled,
+        interval: s.auto_backup_interval,
+    }
+}
+
+#[tauri::command]
+fn set_auto_backup_settings(interval: String) -> AutoBackupSettings {
+    // The dropdown IS the toggle: any non-"never" interval turns auto backup on.
+    // Normalise the interval into a known key so unknown strings fall back to "never".
+    let normalised = AutoBackupInterval::parse(&interval).as_key().to_string();
+    let enabled = normalised != "never";
+    let updated = update_settings(|s| {
+        s.auto_backup_enabled = enabled;
+        s.auto_backup_interval = normalised.clone();
+    });
+    AutoBackupSettings {
+        enabled: updated.auto_backup_enabled,
+        interval: updated.auto_backup_interval,
+    }
+}
+
+#[tauri::command]
+fn run_auto_backup() -> AutoBackupResult {
+    let result = run_auto_backup_now();
+    // Record the last successful run so the scheduler can compute the next due time.
+    save_auto_backup_state(&AutoBackupState {
+        last_run_at: Some(result.exported_at.clone()),
+    });
+    result
+}
+
 // ── Session Breakdown commands ──────────────────────────────────────────────
 
 #[tauri::command]
@@ -494,6 +725,10 @@ pub fn run() {
     // Honour persisted "Enable on Startup" preference and reflect it in the OS registry.
     let initial_startup_enabled = read_startup_enabled_from_disk();
 
+    // Snapshot of the persisted Auto Backup preferences for the scheduler thread.
+    let initial_auto_backup = settings.auto_backup_enabled;
+    let initial_auto_backup_interval = settings.auto_backup_interval.clone();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_autostart::init(
@@ -536,6 +771,51 @@ pub fn run() {
 
             // Start background monitors
             tracker.start(handle.clone());
+
+            // Auto Backup scheduler: ticks every hour and writes a backup when
+            // the persisted interval has elapsed. Uses the same shared
+            // helpers as manual exports (run_auto_backup_now), so the JSON
+            // format and the AutoBackup/Downloads destinations stay in sync.
+            if initial_auto_backup {
+                let scheduler_interval = initial_auto_backup_interval.clone();
+                std::thread::spawn(move || {
+                    // On startup, if a backup is overdue, run it immediately.
+                    let last_state = load_auto_backup_state();
+                    if auto_backup_due(
+                        true,
+                        &scheduler_interval,
+                        last_state.last_run_at.as_deref(),
+                    ) {
+                        if let Some(path) = run_auto_backup_now_opt_path() {
+                            save_auto_backup_state(&AutoBackupState {
+                                last_run_at: Some(Local::now().to_rfc3339()),
+                            });
+                            log::info!("auto backup on startup → {}", path);
+                        }
+                    }
+
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_secs(60 * 60));
+                        let current = load_settings();
+                        if !current.auto_backup_enabled {
+                            continue;
+                        }
+                        let last = load_auto_backup_state();
+                        if auto_backup_due(
+                            true,
+                            &current.auto_backup_interval,
+                            last.last_run_at.as_deref(),
+                        ) {
+                            if let Some(path) = run_auto_backup_now_opt_path() {
+                                save_auto_backup_state(&AutoBackupState {
+                                    last_run_at: Some(Local::now().to_rfc3339()),
+                                });
+                                log::info!("auto backup scheduled → {}", path);
+                            }
+                        }
+                    }
+                });
+            }
 
             // Check initial connection status: show window if earbuds are disconnected at launch
             let startup_handle = handle.clone();
@@ -616,7 +896,9 @@ pub fn run() {
             get_battery_step, set_battery_step,
             get_battery_graph_data, get_active_audio_apps,
             get_query_log, export_all_data, import_all_data,
-            get_startup_enabled, set_startup_enabled
+            get_startup_enabled, set_startup_enabled,
+            get_app_version,
+            get_auto_backup_settings, set_auto_backup_settings, run_auto_backup
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
