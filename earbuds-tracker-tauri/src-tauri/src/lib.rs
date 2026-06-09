@@ -548,13 +548,36 @@ fn set_startup_enabled(enabled: bool, app: AppHandle) -> bool {
 
 // ── App metadata ──────────────────────────────────────────────────────────────
 
+// Cached app version parsed from `tauri.conf.json` at startup so the JS
+// frontend can read it with a single cheap `get_app_version` invoke.
+use std::sync::OnceLock;
+static APP_VERSION: OnceLock<String> = OnceLock::new();
+
+fn init_app_version_from_tauri_config() {
+    // Prefer the `tauri.conf.json` version string (which is also what the
+    // bundle metadata uses). Fall back to `CARGO_PKG_VERSION` if the config
+    // file can't be parsed, so the UI never shows a blank version.
+    let from_config = std::fs::read_to_string("tauri.conf.json")
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|v| {
+            v.get("version")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string())
+        });
+    let version = from_config.unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+    let _ = APP_VERSION.set(version);
+}
+
 #[tauri::command]
 fn get_app_version() -> String {
-    // Source the version from the bundled crate metadata at compile time so
-    // the UI never has to hardcode it. In Tauri v2 `Config::version` is
-    // optional and may be absent, so the most reliable source is the
-    // `CARGO_PKG_VERSION` env var emitted by Cargo from `Cargo.toml`.
-    env!("CARGO_PKG_VERSION").to_string()
+    // Source the version from the bundled `tauri.conf.json` so it always
+    // matches the application version defined in that file (which is also
+    // the version stamped onto the bundled binary).
+    APP_VERSION
+        .get()
+        .cloned()
+        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string())
 }
 
 // ── Auto Backup commands ──────────────────────────────────────────────────────
@@ -665,6 +688,11 @@ fn export_session(session_id: i64, format: String) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
+
+    // Pre-load the application version from `tauri.conf.json` so the
+    // frontend can fetch it cheaply via the `get_app_version` command
+    // and the About section always reflects the source of truth.
+    init_app_version_from_tauri_config();
 
     // Load unified settings. If `settings.json` is missing (older installs), fall back
     // to the legacy per-setting text files and persist a fresh `settings.json` so
