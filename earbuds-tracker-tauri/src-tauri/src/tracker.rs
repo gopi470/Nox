@@ -408,7 +408,6 @@ fn schedule_live_write(inner: Arc<Mutex<Inner>>) {
 }
 
 fn run_event_script(event_type: &str, _device: &str) {
-    use std::path::Path;
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
@@ -416,39 +415,20 @@ fn run_event_script(event_type: &str, _device: &str) {
     let parent = exe_dir.parent().unwrap_or(&exe_dir).to_path_buf();
 
     let script_name = format!("on_{event_type}");
-    let exts = [".ahk", ".bat", ".cmd", ".ps1"];
+    let exts = [".bat", ".cmd", ".ps1"];
 
     for dir in [&parent, &exe_dir] {
         for ext in &exts {
             let path = dir.join(format!("{script_name}{ext}"));
             if path.exists() {
                 info!("Running {event_type} script: {}", path.display());
-                if *ext == ".ahk" {
-                    let ahk_paths = [
-                        r"C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe",
-                        r"C:\Program Files\AutoHotkey\AutoHotkey.exe",
-                    ];
-                    for ahk in &ahk_paths {
-                        if Path::new(ahk).exists() {
-                            let mut cmd = std::process::Command::new(ahk);
-                            #[cfg(target_os = "windows")]
-                            {
-                                use std::os::windows::process::CommandExt;
-                                cmd.creation_flags(0x08000000);
-                            }
-                            cmd.arg(&path).spawn().ok();
-                            return;
-                        }
-                    }
-                } else {
-                    let mut cmd = std::process::Command::new("cmd");
-                    #[cfg(target_os = "windows")]
-                    {
-                        use std::os::windows::process::CommandExt;
-                        cmd.creation_flags(0x08000000);
-                    }
-                    cmd.args(["/C", &path.to_string_lossy()]).spawn().ok();
+                let mut cmd = std::process::Command::new("cmd");
+                #[cfg(target_os = "windows")]
+                {
+                    use std::os::windows::process::CommandExt;
+                    cmd.creation_flags(0x08000000);
                 }
+                cmd.args(["/C", &path.to_string_lossy()]).spawn().ok();
                 return;
             }
         }

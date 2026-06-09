@@ -135,9 +135,6 @@ The Rust backend is registered to start automatically on Windows login (via Taur
    npm run tauri dev
    ```
 
-### Background Launcher (AutoHotkey)
-The `BluetoothLauncher.ahk` script is designed to start the desktop app automatically when earbuds audio routing becomes active.
-
 ### Production Build
 From the Tauri folder:
 ```bash
@@ -186,8 +183,8 @@ npm run tauri build
 - **Target Device Preferences**: The target Bluetooth device name is written to:
   `%APPDATA%\EarbudsTracker\target_device.txt`
 - **On Connect/Disconnect Script Hooks**: If the backend detects a transition, it will automatically search for and execute the following custom scripts if they exist in the executable directory:
-  - `on_connect` (`.ahk` / `.bat` / `.cmd` / `.ps1`)
-  - `on_disconnect` (`.ahk` / `.bat` / `.cmd` / `.ps1`)
+  - `on_connect` (`.bat` / `.cmd` / `.ps1`)
+  - `on_disconnect` (`.bat` / `.cmd` / `.ps1`)
 
 ---
 
