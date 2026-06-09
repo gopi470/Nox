@@ -40,6 +40,20 @@ If you want to compile the app yourself:
 4. After the build finishes, look in the Tauri output folder for the generated installer or package. The exact path depends on the target format you build, but it is typically under `src-tauri/target/release/bundle/`.
 
 ---
+## Note
+## Note
+
+> Nox is currently distributed as an unsigned Windows application.
+>
+> Because it interacts with Bluetooth devices, monitors audio sessions, stores usage statistics, and can optionally start automatically with Windows, Microsoft Defender SmartScreen or antivirus products may display warnings or machine-learning-based detections on newly released builds.
+>
+> These detections can occur with low-distribution or unsigned applications and do not automatically indicate malicious behavior. Always verify downloads originate from the official GitHub Releases page.
+>
+> For transparency, the complete source code is publicly available in this repository and can be reviewed or built from source.
+>
+> Future releases may include code signing to improve trust and reduce SmartScreen and antivirus warnings.
+>
+---
 
 ## Key Features
 
