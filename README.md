@@ -2,7 +2,7 @@
 
 A hybrid background tracking utility and desktop dashboard for monitoring Bluetooth earbuds connection time, active media playback duration, and battery levels on Windows. 
 
-Designed specifically for the **CMF Buds 2a** (with support for custom-named paired devices) using **Rust**, **Tauri (v2)**, **SQLite**, and **AutoHotkey**.
+Designed specifically for the **CMF Buds 2a** (with support for custom-named paired devices) using **Rust**, **Tauri (v2)**, and **SQLite**.
 
 ---
 
@@ -24,7 +24,6 @@ If you want to compile the app yourself:
    - Windows 10 or Windows 11
    - Node.js
    - Rust and Cargo
-   - AutoHotkey v2 if you want the optional launcher
 
 2. Clone the repository:
    ```bash
@@ -70,17 +69,9 @@ If you want to compile the app yourself:
 ## Architecture Overview
 
 
-The system operates across three primary processes:
+The system operates across two primary processes:
 
 ```
-                  ┌───────────────────────┐
-                  │ AutoHotkey Launcher   │
-                  │ (BluetoothLauncher)   │
-                  └───────────┬───────────┘
-                              │
-                    polls HKLM Registry
-                              │
-                              ▼
                   ┌───────────────────────┐
                   │ Tauri Rust Backend    │
                   │ (earbuds-tracker.exe) │
@@ -94,9 +85,10 @@ The system operates across three primary processes:
                   └───────────────────────┘
 ```
 
-1. **Background Launcher (`BluetoothLauncher.ahk`)**: A lightweight AHK script that polls registry keys for active audio endpoints and launches the Tauri process in `Hide` mode as soon as the earbuds connect.
-2. **Tauri Backend (Rust)**: Manages hardware polling threads, serial communication, SQLite data mapping, and local notifications.
-3. **Frontend Dashboard (HTML/CSS/JS)**: A dark-themed, glassmorphic UI loaded via WebView2 for viewing statistics and history.
+The Rust backend is registered to start automatically on Windows login (via Tauri's built-in `tauri-plugin-autostart`). Once running, it stays in the background, monitors Bluetooth audio endpoints, polls battery levels, and records session data to SQLite.
+
+1. **Tauri Backend (Rust)**: Manages hardware polling threads, serial communication, SQLite data mapping, Windows auto-start registration, and local notifications. Detects earbud connect/disconnect events and runs the optional on-connect / on-disconnect user scripts (see [Configuration Details](#configuration-details)).
+2. **Frontend Dashboard (HTML/CSS/JS)**: A dark-themed, glassmorphic UI loaded via WebView2 for viewing statistics and history.
 
 ---
 
@@ -104,8 +96,6 @@ The system operates across three primary processes:
 
 
 ```
-├── BluetoothLauncher.ahk      # AutoHotkey script for background startup/polling
-├── BluetoothLauncherDebug.ahk # Logging version of the AHK script
 ├── test_winrt.ps1             # WinRT Bluetooth prototyping script
 ├── test.ps1                   # PnP device battery prototyping script
 └── earbuds-tracker-tauri/     # Tauri Project root
@@ -129,8 +119,7 @@ The system operates across three primary processes:
 
 ### Prerequisites
 1. **Windows 10 / 11**
-2. **AutoHotkey v2** (for background launching)
-3. **Node.js** (for Tauri frontend tooling) & **Rust/Cargo toolchain** (for building the Rust backend)
+2. **Node.js** (for Tauri frontend tooling) & **Rust/Cargo toolchain** (for building the Rust backend)
 
 ### Build / Run (Developer)
 1. Clone the repository:

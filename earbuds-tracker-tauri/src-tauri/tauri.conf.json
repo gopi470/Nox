@@ -1,7 +1,7 @@
 {
   "productName": "Nox",
   "version": "1.0.0",
-  "identifier": "com.earbudstracker.app",
+  "identifier": "com.gopi470.nox",
   "build": {
     "frontendDist": "../src"
   },
