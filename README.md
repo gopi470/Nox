@@ -2,7 +2,7 @@
 
 A hybrid background tracking utility and desktop dashboard for monitoring Bluetooth earbuds connection time, active media playback duration, and battery levels on Windows. 
 
-Designed specifically for the **CMF Buds 2a** (with support for custom-named paired devices) using **Rust**, **Tauri (v2)**, and **SQLite**.
+Designed for **Nothing** and **CMF** earbuds, with development and testing primarily focused on the **CMF Buds 2a**. Built using **Rust**, **Tauri (v2)**, and **SQLite**.
 
 ---
 
