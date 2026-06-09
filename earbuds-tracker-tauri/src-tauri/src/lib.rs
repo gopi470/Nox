@@ -7,7 +7,7 @@ mod tracker;
 mod spp;
 
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::{ManagerExt, MacosLauncher};
 
 
@@ -22,18 +22,80 @@ fn settings_dir() -> std::path::PathBuf {
         .join("EarbudsTracker")
 }
 
+fn settings_file() -> std::path::PathBuf {
+    settings_dir().join("settings.json")
+}
+
+// Unified application settings, persisted in `settings.json` under the OS app-data dir.
+// Fields use `serde(default)` so older installs that are missing keys still load cleanly.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AppSettings {
+    #[serde(default = "default_battery_interval")]
+    pub battery_interval: u64,
+    #[serde(default = "default_battery_step")]
+    pub battery_step: u8,
+    #[serde(default = "default_target_device")]
+    pub target_device: String,
+    #[serde(default)]
+    pub startup_enabled: bool,
+    #[serde(default = "default_desktop_notifications")]
+    pub desktop_notifications: bool,
+}
+
+fn default_battery_interval() -> u64 { 300 }
+fn default_battery_step() -> u8 { 5 }
+fn default_target_device() -> String { "CMF Buds 2a".to_string() }
+fn default_desktop_notifications() -> bool { true }
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            battery_interval: default_battery_interval(),
+            battery_step: default_battery_step(),
+            target_device: default_target_device(),
+            startup_enabled: false,
+            desktop_notifications: default_desktop_notifications(),
+        }
+    }
+}
+
+fn load_settings() -> AppSettings {
+    let path = settings_file();
+    match std::fs::read_to_string(&path) {
+        Ok(raw) => match serde_json::from_str::<AppSettings>(&raw) {
+            Ok(s) => s,
+            Err(err) => {
+                log::warn!("settings.json could not be parsed ({}); falling back to defaults", err);
+                AppSettings::default()
+            }
+        },
+        Err(_) => AppSettings::default(),
+    }
+}
+
+fn save_settings_to_disk(settings: &AppSettings) {
+    let dir = settings_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    if let Ok(pretty) = serde_json::to_string_pretty(settings) {
+        let _ = std::fs::write(settings_file(), pretty);
+    }
+}
+
+fn update_settings<F: FnOnce(&mut AppSettings)>(mutator: F) -> AppSettings {
+    let mut current = load_settings();
+    mutator(&mut current);
+    save_settings_to_disk(&current);
+    current
+}
+
+// Backwards-compatible wrappers that read/write the single `startup_enabled`
+// field inside `settings.json` without changing the existing call sites.
 fn read_startup_enabled_from_disk() -> bool {
-    let path = settings_dir().join("startup_enabled.txt");
-    std::fs::read_to_string(&path)
-        .ok()
-        .map(|c| c.trim().eq_ignore_ascii_case("true") || c.trim() == "1")
-        .unwrap_or(false)
+    load_settings().startup_enabled
 }
 
 fn write_startup_enabled_to_disk(enabled: bool) {
-    let dir = settings_dir();
-    let _ = std::fs::create_dir_all(&dir);
-    let _ = std::fs::write(dir.join("startup_enabled.txt"), if enabled { "true" } else { "false" });
+    update_settings(|s| s.startup_enabled = enabled);
 }
 
 // ── Tauri commands (called from JS frontend) ──────────────────────────────────
@@ -56,12 +118,7 @@ fn get_sessions(state: State<TrackerState>) -> Vec<SessionRow> {
 #[tauri::command]
 fn set_device_name(name: String, state: State<TrackerState>) {
     state.set_device_name(&name);
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        let dir = std::path::PathBuf::from(appdata).join("EarbudsTracker");
-        std::fs::create_dir_all(&dir).ok();
-        let path = dir.join("target_device.txt");
-        let _ = std::fs::write(path, name);
-    }
+    update_settings(|s| s.target_device = name);
 }
 
 #[tauri::command]
@@ -72,12 +129,7 @@ fn get_battery_interval(state: State<TrackerState>) -> u64 {
 #[tauri::command]
 fn set_battery_interval(secs: u64, state: State<TrackerState>) {
     state.set_battery_interval_secs(secs);
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        let dir = std::path::PathBuf::from(appdata).join("EarbudsTracker");
-        std::fs::create_dir_all(&dir).ok();
-        let path = dir.join("battery_interval.txt");
-        let _ = std::fs::write(path, secs.to_string());
-    }
+    update_settings(|s| s.battery_interval = secs);
 }
 
 #[tauri::command]
@@ -88,12 +140,7 @@ fn get_battery_step(state: State<TrackerState>) -> u8 {
 #[tauri::command]
 fn set_battery_step(step: u8, state: State<TrackerState>) {
     state.set_battery_step(step);
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        let dir = std::path::PathBuf::from(appdata).join("EarbudsTracker");
-        std::fs::create_dir_all(&dir).ok();
-        let path = dir.join("battery_step.txt");
-        let _ = std::fs::write(path, step.to_string());
-    }
+    update_settings(|s| s.battery_step = step);
 }
 
 #[tauri::command]
@@ -388,33 +435,60 @@ fn export_session(session_id: i64, format: String) -> String {
 pub fn run() {
     env_logger::init();
 
+    // Load unified settings. If `settings.json` is missing (older installs), fall back
+    // to the legacy per-setting text files and persist a fresh `settings.json` so
+    // subsequent launches use the unified storage.
     let mut initial_device = "CMF Buds 2a".to_string();
     let mut initial_interval = 300; // 5 minutes default
     let mut initial_step = 5; // 5% default
+
+    let mut settings = load_settings();
+    let mut migrated_from_legacy = false;
+
     if let Ok(appdata) = std::env::var("APPDATA") {
         let dir = std::path::PathBuf::from(appdata).join("EarbudsTracker");
-        let path_dev = dir.join("target_device.txt");
-        if let Ok(content) = std::fs::read_to_string(path_dev) {
-            let trimmed = content.trim().to_string();
-            if !trimmed.is_empty() {
-                initial_device = trimmed;
+
+        // If settings.json was missing/empty, attempt to migrate from the legacy files.
+        if !settings_file().exists() {
+            let path_dev = dir.join("target_device.txt");
+            if let Ok(content) = std::fs::read_to_string(&path_dev) {
+                let trimmed = content.trim().to_string();
+                if !trimmed.is_empty() {
+                    settings.target_device = trimmed;
+                    migrated_from_legacy = true;
+                }
             }
-        }
-        let path_int = dir.join("battery_interval.txt");
-        if let Ok(content) = std::fs::read_to_string(path_int) {
-            if let Ok(parsed) = content.trim().parse::<u64>() {
-                initial_interval = parsed;
+            let path_int = dir.join("battery_interval.txt");
+            if let Ok(content) = std::fs::read_to_string(&path_int) {
+                if let Ok(parsed) = content.trim().parse::<u64>() {
+                    settings.battery_interval = parsed;
+                    migrated_from_legacy = true;
+                }
             }
-        }
-        let path_step = dir.join("battery_step.txt");
-        if let Ok(content) = std::fs::read_to_string(path_step) {
-            if let Ok(parsed) = content.trim().parse::<u8>() {
-                if parsed == 1 || parsed == 5 || parsed == 10 {
-                    initial_step = parsed;
+            let path_step = dir.join("battery_step.txt");
+            if let Ok(content) = std::fs::read_to_string(&path_step) {
+                if let Ok(parsed) = content.trim().parse::<u8>() {
+                    if parsed == 1 || parsed == 5 || parsed == 10 {
+                        settings.battery_step = parsed;
+                        migrated_from_legacy = true;
+                    }
                 }
             }
         }
     }
+
+    if !settings.target_device.trim().is_empty() {
+        initial_device = settings.target_device.clone();
+    }
+    initial_interval = settings.battery_interval;
+    if settings.battery_step == 1 || settings.battery_step == 5 || settings.battery_step == 10 {
+        initial_step = settings.battery_step;
+    }
+
+    if migrated_from_legacy {
+        save_settings_to_disk(&settings);
+    }
+
     let tracker = Arc::new(Tracker::new(&initial_device, initial_interval, initial_step));
 
     // Honour persisted "Enable on Startup" preference and reflect it in the OS registry.
