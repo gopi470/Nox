@@ -1,3 +1,4 @@
+import { computeStreak } from './utils.js';
 // main.js – Nox frontend logic
 // Tauri v2 exposes invoke under window.__TAURI__.core, not window.__TAURI__ directly
 const invoke = (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) || (async (cmd, args) => {
@@ -1623,73 +1624,23 @@ async function updateDailyStatsAndChart(todayPlaybackSecs = null) {
   updateStatsWeekControls();
 }
 
+
 function calculateStreak(history, todayPlaybackSecs = null) {
-  if (!history || history.length === 0) {
-    document.getElementById('streak-badge-container').style.display = 'none';
-    return;
-  }
+  const { streak, show } = computeStreak(history, currentGoal, todayPlaybackSecs);
 
-  const goalSecs = currentGoal * 3600;
-  const playbackMap = new Map();
-  history.forEach(row => {
-    playbackMap.set(row.day, row.playback_secs || 0);
-  });
+  if (show) {
+    const streakCountEl = document.getElementById('streak-count');
+    const streakLabelEl = document.getElementById('streak-label');
+    const containerEl = document.getElementById('streak-badge-container');
 
-  const getLocalDateString = (d) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  };
-
-  let today = new Date();
-  let yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
-
-  const todayStr = getLocalDateString(today);
-  const yesterdayStr = getLocalDateString(yesterday);
-
-  if (todayPlaybackSecs != null && Number.isFinite(todayPlaybackSecs)) {
-    playbackMap.set(todayStr, Math.max(playbackMap.get(todayStr) || 0, todayPlaybackSecs));
-  }
-
-  let streak = 0;
-  let checkDate = new Date();
-
-  const todayPlay = playbackMap.get(todayStr) || 0;
-  const yestPlay = playbackMap.get(yesterdayStr) || 0;
-
-  if (todayPlay >= goalSecs) {
-    streak = 1;
-    checkDate.setDate(today.getDate() - 1);
-  } else if (yestPlay >= goalSecs) {
-    streak = 1;
-    checkDate.setDate(yesterday.getDate() - 1);
-  } else {
-    document.getElementById('streak-badge-container').style.display = 'none';
-    return;
-  }
-
-  while (true) {
-    const dateStr = getLocalDateString(checkDate);
-    const playTime = playbackMap.get(dateStr) || 0;
-    if (playTime >= goalSecs) {
-      streak++;
-      checkDate.setDate(checkDate.getDate() - 1);
-    } else {
-      break;
+    if (streakCountEl) streakCountEl.textContent = streak;
+    if (streakLabelEl) {
+      streakLabelEl.textContent = streak === 1 ? 'Day Streak' : 'Days Streak';
     }
-  }
-
-  if (streak > 0) {
-    document.getElementById('streak-count').textContent = streak;
-    const streakLabel = document.getElementById('streak-label');
-    if (streakLabel) {
-      streakLabel.textContent = streak === 1 ? 'Day Streak' : 'Days Streak';
-    }
-    document.getElementById('streak-badge-container').style.display = 'inline-flex';
+    if (containerEl) containerEl.style.display = 'inline-flex';
   } else {
-    document.getElementById('streak-badge-container').style.display = 'none';
+    const containerEl = document.getElementById('streak-badge-container');
+    if (containerEl) containerEl.style.display = 'none';
   }
 }
 
