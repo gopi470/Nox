@@ -685,6 +685,8 @@ fn export_session(session_id: i64, format: String) -> String {
 
 // ── App entry ─────────────────────────────────────────────────────────────────
 
+static IS_EXITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
@@ -758,6 +760,13 @@ pub fn run() {
     let initial_auto_backup_interval = settings.auto_backup_interval.clone();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+                let _ = win.unminimize();
+                let _ = win.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -765,6 +774,7 @@ pub fn run() {
         ))
         .manage(Arc::clone(&tracker))
         .setup(move |app| {
+            IS_EXITING.store(false, std::sync::atomic::Ordering::Relaxed);
             let handle = app.handle().clone();
 
             // Reflect the persisted "Enable on Startup" preference in the OS registry.
@@ -774,8 +784,6 @@ pub fn run() {
             let currently_enabled = auto_manager.is_enabled().unwrap_or(false);
             if initial_startup_enabled && !currently_enabled {
                 let _ = auto_manager.enable();
-            } else if !initial_startup_enabled && currently_enabled {
-                let _ = auto_manager.disable();
             }
 
             #[cfg(target_os = "windows")]
@@ -848,9 +856,10 @@ pub fn run() {
             // Check initial connection status: show window if earbuds are disconnected at launch
             let startup_handle = handle.clone();
             let startup_tracker = Arc::clone(&tracker);
+            let is_silent = std::env::args().any(|arg| arg == "--silent");
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_millis(1500));
-                if !startup_tracker.is_connected() {
+                if !is_silent && !startup_tracker.is_connected() {
                     if let Some(win) = startup_handle.get_webview_window("main") {
                         win.show().ok();
                         win.set_focus().ok();
@@ -880,6 +889,7 @@ pub fn run() {
                     .on_menu_event(move |app_handle, event| {
                         match event.id().as_ref() {
                             "quit" => {
+                                IS_EXITING.store(true, std::sync::atomic::Ordering::Relaxed);
                                 app_handle.exit(0);
                             }
                             "show" => {
@@ -910,8 +920,10 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                window.hide().ok();
-                api.prevent_close();
+                if !IS_EXITING.load(std::sync::atomic::Ordering::Relaxed) {
+                    window.hide().ok();
+                    api.prevent_close();
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
