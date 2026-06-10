@@ -1394,9 +1394,10 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
         div.style.background = 'var(--bg3)';
         div.style.borderRadius = '6px';
         div.innerHTML = `
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg>
-          <span style="font-size: 13px; color: var(--text);">${typeof bdFmtAppName === 'function' ? bdFmtAppName(appName) : appName}</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1 -2 2h-1a2 2 0 0 1 -2 -2v-3a2 2 0 0 1 2 -2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2 -2v-3a2 2 0 0 0 -2 -2H3z"></path></svg>
+          <span style="font-size: 13px; color: var(--text);"></span>
         `;
+        div.querySelector('span').textContent = typeof bdFmtAppName === 'function' ? bdFmtAppName(appName) : appName;
         appsContainer.appendChild(div);
       });
     } else {
@@ -2315,7 +2316,7 @@ function bdRenderDetail(bd, container) {
         </div>
         <div class="bd-info-item">
           <span class="bd-info-label">Top App</span>
-          <span class="bd-info-value" style="font-size:12px;">${topApp ? bdFmtAppName(topApp.process_name) + ' · ' + bdFmtDur(topApp.total_secs) : '—'}</span>
+          <span class="bd-info-value" style="font-size:12px;">${topApp ? escapeHtml(bdFmtAppName(topApp.process_name)) + ' · ' + bdFmtDur(topApp.total_secs) : '—'}</span>
         </div>
       </div>
     </div>
@@ -2370,7 +2371,7 @@ function bdRenderAppBars(totals, sessionPlaySecs = 1) {
     const formattedName = bdFmtAppName(t.process_name);
     card.innerHTML = `
       <div class="bd-app-row-header">
-        <span class="bd-app-name">${formattedName}</span>
+        <span class="bd-app-name">${escapeHtml(formattedName)}</span>
         <span class="bd-app-dur">${bdFmtDur(t.total_secs)}</span>
       </div>
       <div class="bd-app-bar-track">
