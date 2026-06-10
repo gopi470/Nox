@@ -19,7 +19,11 @@ fn db_path() -> &'static PathBuf {
 
 fn conn() -> &'static Mutex<Connection> {
     CONN.get_or_init(|| {
+        #[cfg(not(test))]
         let c = Connection::open(db_path()).expect("Cannot open SQLite DB");
+        #[cfg(test)]
+        let c = Connection::open_in_memory().expect("Cannot open in-memory DB");
+
         c.execute_batch(
             "PRAGMA journal_mode=WAL;
              CREATE TABLE IF NOT EXISTS sessions (
@@ -936,5 +940,103 @@ pub fn cleanup_unclosed_sessions() {
         ).ok();
 
         println!("Cleaned up interrupted session id={} (Conn: {}s, Play: {}s)", s.id, s.connected_secs, s.playback_secs);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Local, Duration};
+    use parking_lot::Mutex;
+
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn setup_db() -> parking_lot::MutexGuard<'static, ()> {
+        let lock = TEST_LOCK.lock();
+        reset_all_data();
+        lock
+    }
+
+    #[test]
+    fn test_get_daily_history_empty() {
+        let _lock = setup_db();
+        let history = get_daily_history(0);
+        assert!(history.is_empty());
+    }
+
+    #[test]
+    fn test_get_daily_history_current_week() {
+        let _lock = setup_db();
+        let today = Local::now().date_naive();
+
+        // Add data for today and 2 days ago
+        add_to_daily(&today, 100.0, 50.0);
+        add_to_daily(&(today - Duration::days(2)), 200.0, 100.0);
+
+        // Add data for 8 days ago (should be out of range for week_offset 0)
+        add_to_daily(&(today - Duration::days(8)), 300.0, 150.0);
+
+        let history = get_daily_history(0);
+
+        assert_eq!(history.len(), 2);
+        // Ordering in code is ASC
+        assert_eq!(history[0].day, (today - Duration::days(2)).format("%Y-%m-%d").to_string());
+        assert_eq!(history[0].connected_secs, 200.0);
+        assert_eq!(history[1].day, today.format("%Y-%m-%d").to_string());
+        assert_eq!(history[1].connected_secs, 100.0);
+    }
+
+    #[test]
+    fn test_get_daily_history_previous_week() {
+        let _lock = setup_db();
+        let today = Local::now().date_naive();
+
+        // Data in current week
+        add_to_daily(&today, 100.0, 50.0);
+
+        // Data in previous week (offset 1: today-7 to today-13)
+        let last_week_day = today - Duration::days(10);
+        add_to_daily(&last_week_day, 500.0, 250.0);
+
+        let history = get_daily_history(1);
+
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].day, last_week_day.format("%Y-%m-%d").to_string());
+        assert_eq!(history[0].connected_secs, 500.0);
+    }
+
+    #[test]
+    fn test_get_daily_history_ordering() {
+        let _lock = setup_db();
+        let today = Local::now().date_naive();
+
+        add_to_daily(&today, 100.0, 50.0);
+        add_to_daily(&(today - Duration::days(1)), 200.0, 100.0);
+        add_to_daily(&(today - Duration::days(2)), 300.0, 150.0);
+
+        let history = get_daily_history(0);
+
+        assert_eq!(history.len(), 3);
+        assert!(history[0].day < history[1].day);
+        assert!(history[1].day < history[2].day);
+    }
+
+    #[test]
+    fn test_get_daily_history_boundaries() {
+        let _lock = setup_db();
+        let today = Local::now().date_naive();
+
+        // week_offset 0 is today to today-6
+        let day_6 = today - Duration::days(6);
+        let day_7 = today - Duration::days(7);
+
+        add_to_daily(&today, 1.0, 1.0);
+        add_to_daily(&day_6, 6.0, 6.0);
+        add_to_daily(&day_7, 7.0, 7.0);
+
+        let history = get_daily_history(0);
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].connected_secs, 6.0);
+        assert_eq!(history[1].connected_secs, 1.0);
     }
 }
