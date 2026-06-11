@@ -27,8 +27,9 @@ pub struct Snapshot {
 
 struct Session {
     id: i64,
-    start: Instant,
     start_dt: NaiveDateTime,
+    last_tick: Instant,
+    connected_secs: f64,
     play_start: Option<Instant>,
     playback_secs: f64,
 }
@@ -169,8 +170,7 @@ impl Tracker {
         self.audio.start(
             move || {
                 let mut g = inner_play.lock();
-                if g.session.is_some() {
-                    let s = g.session.as_mut().unwrap();
+                if let Some(s) = g.session.as_mut() {
                     if s.play_start.is_none() {
                         s.play_start = Some(Instant::now());
                     }
@@ -180,11 +180,14 @@ impl Tracker {
             move || {
                 let mut g = inner_pause.lock();
                 if let Some(s) = g.session.as_mut() {
-                    if let Some(ps) = s.play_start.take() {
-                        // Compensate for detection offsets: +5s grace period, -2s loud_count = +3s net overestimation
-                        let mut elapsed = ps.elapsed().as_secs_f64() - 3.0;
-                        if elapsed < 0.0 { elapsed = 0.0; }
-                        s.playback_secs += elapsed;
+                    if s.play_start.take().is_some() {
+                        // Compensate for detection offsets: +5s grace period, -2s loud_count = +3s net overestimation.
+                        // We deduct the 3.0s from the accumulated playback_secs.
+                        if s.playback_secs >= 3.0 {
+                            s.playback_secs -= 3.0;
+                        } else {
+                            s.playback_secs = 0.0;
+                        }
                     }
                 }
                 call_notify(&notify_pause);
@@ -209,10 +212,12 @@ impl Tracker {
                 let now = Local::now().naive_local();
                 let id = db::open_session(&now);
                 let mut g = inner_conn.lock();
+                let now_instant = Instant::now();
                 g.session = Some(Session {
                     id,
-                    start: Instant::now(),
                     start_dt: now,
+                    last_tick: now_instant,
+                    connected_secs: 0.0,
                     play_start: None,
                     playback_secs: 0.0,
                 });
@@ -371,11 +376,27 @@ fn call_notify(cb: &Arc<Mutex<Option<Box<dyn Fn() + Send + 'static>>>>) {
     if let Some(f) = cb.lock().as_ref() { f(); }
 }
 
+fn current_durations_for_session(s: &Session) -> (f64, f64) {
+    let now = Instant::now();
+    let delta = now.checked_duration_since(s.last_tick).unwrap_or_default().as_secs_f64();
+    let c = if delta < 3.0 { s.connected_secs + delta } else { s.connected_secs };
+    let p = if let Some(ps) = s.play_start {
+        if delta < 3.0 {
+            let play_delta_start = if ps > s.last_tick { ps } else { s.last_tick };
+            let play_delta = now.checked_duration_since(play_delta_start).unwrap_or_default().as_secs_f64();
+            s.playback_secs + play_delta
+        } else {
+            s.playback_secs
+        }
+    } else {
+        s.playback_secs
+    };
+    (c, p)
+}
+
 fn current_durations(g: &Inner) -> (f64, f64) {
     if let Some(s) = &g.session {
-        let c = s.start.elapsed().as_secs_f64();
-        let p = s.playback_secs + s.play_start.map(|ps| ps.elapsed().as_secs_f64()).unwrap_or(0.0);
-        (c, p)
+        current_durations_for_session(s)
     } else {
         (0.0, 0.0)
     }
@@ -384,8 +405,7 @@ fn current_durations(g: &Inner) -> (f64, f64) {
 fn finalise_session(g: &mut Inner) {
     if let Some(s) = g.session.take() {
         let now = Local::now().naive_local();
-        let c = s.start.elapsed().as_secs_f64();
-        let p = s.playback_secs + s.play_start.map(|ps| ps.elapsed().as_secs_f64()).unwrap_or(0.0);
+        let (c, p) = current_durations_for_session(&s);
         db::close_session(s.id, &now, c, p);
         db::add_to_daily(&now.date(), c, p);
         info!("Session closed id={}", s.id);
@@ -394,12 +414,37 @@ fn finalise_session(g: &mut Inner) {
 
 fn schedule_live_write(inner: Arc<Mutex<Inner>>) {
     std::thread::spawn(move || {
+        let mut live_write_counter = 0;
         loop {
-            std::thread::sleep(Duration::from_secs(LIVE_WRITE_SECS));
-            let g = inner.lock();
-            if let Some(s) = &g.session {
-                let (c, p) = current_durations(&g);
-                db::update_session_live(s.id, c, p);
+            std::thread::sleep(Duration::from_secs(1));
+            let mut g = inner.lock();
+            if let Some(s) = &mut g.session {
+                let now = Instant::now();
+                let delta = now.checked_duration_since(s.last_tick).unwrap_or_default().as_secs_f64();
+                
+                if delta < 3.0 {
+                    s.connected_secs += delta;
+                    if let Some(ps) = s.play_start {
+                        let play_delta_start = if ps > s.last_tick { ps } else { s.last_tick };
+                        let play_delta = now.checked_duration_since(play_delta_start).unwrap_or_default().as_secs_f64();
+                        s.playback_secs += play_delta;
+                    }
+                } else {
+                    info!("Suspend/Resume detected: gap of {:.2}s ignored", delta);
+                    if s.play_start.is_some() {
+                        s.play_start = Some(now);
+                    }
+                }
+                
+                s.last_tick = now;
+
+                live_write_counter += 1;
+                if live_write_counter >= LIVE_WRITE_SECS {
+                    live_write_counter = 0;
+                    let c = s.connected_secs;
+                    let p = s.playback_secs;
+                    db::update_session_live(s.id, c, p);
+                }
             } else {
                 break;
             }

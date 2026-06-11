@@ -87,7 +87,7 @@ fn get_peak_level(target: &str) -> Option<f32> {
             Media::Audio::{
                 Endpoints::IAudioMeterInformation,
                 IMMDeviceCollection, IMMDeviceEnumerator, MMDeviceEnumerator,
-                eRender, DEVICE_STATE_ACTIVE,
+                eRender, DEVICE_STATE_ACTIVE, IAudioSessionManager2,
             },
             System::Com::{CoCreateInstance, CLSCTX_ALL, CoTaskMemFree, STGM_READ},
             System::Com::StructuredStorage::PropVariantToStringAlloc,
@@ -111,10 +111,35 @@ fn get_peak_level(target: &str) -> Option<f32> {
             CoTaskMemFree(Some(psz_out.0 as *const _));
 
             if !name.contains(target) { continue; }
-            let Ok(iface) = device.Activate::<IAudioMeterInformation>(CLSCTX_ALL, None) else { continue };
-            if let Ok(peak) = iface.GetPeakValue() {
-                debug!("Endpoint {name:?} peak={peak:.5}");
-                if peak > max_peak { max_peak = peak; }
+            
+            let mut device_peak: f32 = 0.0;
+            if let Ok(iface) = device.Activate::<IAudioMeterInformation>(CLSCTX_ALL, None) {
+                if let Ok(peak) = iface.GetPeakValue() {
+                    device_peak = peak;
+                }
+            }
+
+            let mut session_peak: f32 = 0.0;
+            if let Ok(manager) = device.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None) {
+                if let Ok(session_enum) = manager.GetSessionEnumerator() {
+                    if let Ok(sess_count) = session_enum.GetCount() {
+                        for j in 0..sess_count {
+                            let Ok(ctrl) = session_enum.GetSession(j) else { continue };
+                            let Ok(meter) = ctrl.cast::<IAudioMeterInformation>() else { continue };
+                            if let Ok(peak) = meter.GetPeakValue() {
+                                if peak > session_peak {
+                                    session_peak = peak;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            let peak = if device_peak > session_peak { device_peak } else { session_peak };
+            debug!("Endpoint {name:?} peak={peak:.5} (device={device_peak:.5}, sessions={session_peak:.5})");
+            if peak > max_peak {
+                max_peak = peak;
             }
         }
         Some(max_peak)
