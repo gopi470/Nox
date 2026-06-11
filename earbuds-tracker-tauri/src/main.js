@@ -2861,7 +2861,8 @@ async function loadBatteryGraph() {
         colors = [greenColor, blueColor, purpleColor];
       }
     } else if (chartType === 'radar') {
-      const radarDurationLabel = graphDurationSelect?.selectedOptions?.[0]?.textContent || (duration === 'day' ? 'Today' : duration === 'week' ? 'Week' : duration === 'month' ? 'Month' : 'This Session');
+      const durationMap = { day: 'Today', week: 'Week', month: 'Month' };
+      const radarDurationLabel = graphDurationSelect?.selectedOptions?.[0]?.textContent || durationMap[duration] || 'This Session';
       const radarItemLabel = 'All';
 
       if (duration === 'session') {
