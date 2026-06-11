@@ -1249,3 +1249,31 @@ body.font-ndot .analytics-title {
   .bd-app-list { grid-template-columns: 1fr 1fr; }
 }
 
+
+/* ── Interrupted Banner ─────────────────────────────────────────────────── */
+.interrupted-banner {
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.interrupted-banner-icon {
+  font-size: 18px;
+}
+
+.interrupted-banner-title {
+  color: #f87171;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.interrupted-banner-desc {
+  color: #fca5a5;
+  font-size: 11px;
+  margin-top: 2px;
+}

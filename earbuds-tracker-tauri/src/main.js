@@ -2222,11 +2222,11 @@ function bdRenderDetail(bd, container) {
   const topApp = bd.app_totals.length > 0 ? bd.app_totals[0] : null;
 
   const interruptedBanner = (s.interrupted === 1 || s.interrupted === true)
-    ? `<div style="background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.35);border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">
-        <span style="font-size:18px;">⚠️</span>
+    ? `<div class="interrupted-banner">
+        <span class="interrupted-banner-icon">⚠️</span>
         <div>
-          <div style="color:#f87171;font-weight:600;font-size:13px;">Interrupted Session</div>
-          <div style="color:#fca5a5;font-size:11px;margin-top:2px;">The app was closed unexpectedly during this session. Times shown are the last recorded values before shutdown.</div>
+          <div class="interrupted-banner-title">Interrupted Session</div>
+          <div class="interrupted-banner-desc">The app was closed unexpectedly during this session. Times shown are the last recorded values before shutdown.</div>
         </div>
        </div>`
     : '';
