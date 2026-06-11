@@ -233,6 +233,25 @@ body.font-ndot .page-sub {
 .status-title { font-size: 15px; font-weight: 600; margin-bottom: 3px; }
 .status-desc  { font-size: 12px; color: var(--muted); }
 
+.live-app-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg3);
+  border-radius: 6px;
+}
+.live-app-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.live-app-name {
+  font-size: 13px;
+  color: var(--text);
+}
+
 body.font-ndot .status-title {
   font-family: 'NDot', monospace;
   font-weight: 400;

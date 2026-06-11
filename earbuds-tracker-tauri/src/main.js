@@ -1388,17 +1388,12 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
       appsContainer.innerHTML = '';
       activeApps.forEach(appName => {
         const div = document.createElement('div');
-        div.style.display = 'flex';
-        div.style.alignItems = 'center';
-        div.style.gap = '8px';
-        div.style.padding = '8px 12px';
-        div.style.background = 'var(--bg3)';
-        div.style.borderRadius = '6px';
+        div.className = 'live-app-item';
         div.innerHTML = `
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1 -2 2h-1a2 2 0 0 1 -2 -2v-3a2 2 0 0 1 2 -2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2 -2v-3a2 2 0 0 0 -2 -2H3z"></path></svg>
-          <span style="font-size: 13px; color: var(--text);"></span>
+          <svg class="live-app-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1 -2 2h-1a2 2 0 0 1 -2 -2v-3a2 2 0 0 1 2 -2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2 -2v-3a2 2 0 0 0 -2 -2H3z"></path></svg>
+          <span class="live-app-name"></span>
         `;
-        div.querySelector('span').textContent = typeof bdFmtAppName === 'function' ? bdFmtAppName(appName) : appName;
+        div.querySelector('.live-app-name').textContent = typeof bdFmtAppName === 'function' ? bdFmtAppName(appName) : appName;
         appsContainer.appendChild(div);
       });
     } else {
