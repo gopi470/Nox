@@ -17,7 +17,8 @@
   font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
 }
 
-html, body { height: 100%; background: var(--bg); color: var(--text); overflow: hidden; }
+html, body { height: 100%; background: var(--bg); color: var(--text); overflow: hidden; user-select: none; -webkit-user-select: none; }
+input, textarea, [contenteditable="true"] { user-select: text; -webkit-user-select: text; }
 
 /* ── Layout shell ─────────────────────────────────────────────────────────── */
 .shell { display: flex; height: 100vh; }
