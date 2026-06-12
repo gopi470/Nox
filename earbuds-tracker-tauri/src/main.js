@@ -3311,3 +3311,83 @@ document.getElementById('graph-item')?.addEventListener('change', loadBatteryGra
 document.getElementById('graph-type')?.addEventListener('change', loadBatteryGraph);
 document.getElementById('stats-week-prev')?.addEventListener('click', () => changeStatsWeek(1));
 document.getElementById('stats-week-next')?.addEventListener('click', () => changeStatsWeek(-1));
+
+initForceUpdateBtn();
+
+// Force update battery button handler
+function initForceUpdateBtn() {
+  const btn = document.getElementById('force-update-btn');
+  if (!btn) return;
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = `
+      <svg class="spinner" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;">
+        <line x1="12" y1="2" x2="12" y2="6"></line>
+        <line x1="12" y1="18" x2="12" y2="22"></line>
+        <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+        <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+        <line x1="2" y1="12" x2="6" y2="12"></line>
+        <line x1="18" y1="12" x2="22" y2="12"></line>
+        <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+        <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+      </svg>
+      Querying...
+    `;
+
+    try {
+      if (!lastConnected) {
+        showNotificationToast("Cannot query battery: Device is disconnected.");
+      } else {
+        const info = await invoke('force_query_battery');
+        if (info) {
+          await refreshSnapshot();
+          showNotificationToast("Battery status updated successfully.");
+        } else {
+          showNotificationToast("Query failed: No response from earbud.");
+        }
+      }
+    } catch (err) {
+      console.error("Force battery query failed:", err);
+      showNotificationToast("Error querying battery: " + err);
+    } finally {
+      btn.innerHTML = originalContent;
+      btn.disabled = false;
+    }
+  });
+}
+
+// Simple toast notification helper
+function showNotificationToast(msg) {
+  let toast = document.getElementById('force-update-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'force-update-toast';
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      padding: 10px 16px;
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--fg);
+      z-index: 9999;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.3s ease;
+      pointer-events: none;
+    `;
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.opacity = '1';
+  toast.style.transform = 'translateY(0)';
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(10px)';
+  }, 3000);
+}

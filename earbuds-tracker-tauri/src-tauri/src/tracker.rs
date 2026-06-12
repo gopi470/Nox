@@ -104,6 +104,10 @@ impl Tracker {
         self.device_name.read().clone()
     }
 
+    pub fn get_active_session_id(&self) -> Option<i64> {
+        self.inner.lock().session.as_ref().map(|s| s.id)
+    }
+
     pub fn set_battery_interval_secs(&self, secs: u64) {
         *self.battery_interval_secs.write() = secs;
     }
@@ -118,6 +122,50 @@ impl Tracker {
 
     pub fn get_battery_step(&self) -> u8 {
         *self.battery_step.read()
+    }
+
+    pub fn force_query_battery(&self) -> Option<crate::spp::BatteryInfo> {
+        let dev = self.get_device_name();
+        if dev.is_empty() {
+            return None;
+        }
+        self.record_query_log(
+            "Battery query sent (Force)",
+            format!("Polling {}", dev),
+        );
+        let previous_bat = self.battery_cache.lock().clone();
+        if let Some(mut bat) = crate::spp::read_battery(&dev) {
+            bat = merge_battery_reading(previous_bat, bat);
+            let step = self.get_battery_step();
+            if step > 1 {
+                bat.left = bat.left.map(|v| round_to_step(v, step));
+                bat.right = bat.right.map(|v| round_to_step(v, step));
+                bat.case = bat.case.map(|v| round_to_step(v, step));
+            }
+            let updated_at = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            bat.updated_at = Some(updated_at);
+
+            self.record_query_log(
+                "Battery response received (Force)",
+                format!("L={:?} R={:?} C={:?}", bat.left, bat.right, bat.case),
+            );
+
+            *self.battery_cache.lock() = Some(bat.clone());
+            if let Some(sess_id) = self.get_active_session_id() {
+                db::set_connect_battery(sess_id, bat.left, bat.right, bat.case);
+            }
+            call_notify(&self.on_state_change);
+            Some(bat)
+        } else {
+            self.record_query_log(
+                "Battery query failed (Force)",
+                "No battery response received",
+            );
+            None
+        }
     }
 
     pub fn record_query_log(&self, action: impl Into<String>, details: impl Into<String>) {
