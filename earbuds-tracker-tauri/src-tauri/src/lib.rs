@@ -528,6 +528,11 @@ fn get_device_battery(state: State<TrackerState>) -> Option<spp::BatteryInfo> {
 }
 
 #[tauri::command]
+fn force_query_battery(state: State<TrackerState>) -> Option<spp::BatteryInfo> {
+    state.force_query_battery()
+}
+
+#[tauri::command]
 fn is_debug() -> bool {
     cfg!(debug_assertions)
 }
@@ -963,7 +968,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_snapshot, get_sessions, reset_all, get_daily_history, get_daily_history_bounds,
             set_device_name, show_notification, get_paired_devices,
-            verify_windows_password, get_device_battery, is_debug,
+            verify_windows_password, get_device_battery, force_query_battery, is_debug,
             get_sessions_for_breakdown, get_session_breakdown,
             set_session_note, export_session,
             get_battery_interval, set_battery_interval,

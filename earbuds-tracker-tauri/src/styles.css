@@ -1250,3 +1250,26 @@ body.font-ndot .analytics-title {
   .bd-app-list { grid-template-columns: 1fr 1fr; }
 }
 
+/* Spinner animation for force update button */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+#force-update-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+
+#force-update-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  border-color: var(--border) !important;
+  color: var(--muted) !important;
+}
+
