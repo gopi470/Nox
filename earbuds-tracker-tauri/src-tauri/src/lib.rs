@@ -18,6 +18,18 @@ use chrono::Local;
 
 type TrackerState = Arc<Tracker>;
 
+#[cfg(target_os = "windows")]
+#[link(name = "user32")]
+extern "system" {
+    fn MessageBoxW(
+        hwnd: windows::Win32::Foundation::HWND,
+        lpText: windows::core::PCWSTR,
+        lpCaption: windows::core::PCWSTR,
+        uType: u32,
+    ) -> i32;
+}
+
+
 fn settings_dir() -> std::path::PathBuf {
     std::path::PathBuf::from(std::env::var("APPDATA").unwrap_or_else(|_| ".".into()))
         .join("EarbudsTracker")
@@ -882,6 +894,7 @@ pub fn run() {
                 // Tray icon
                 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
                 let tray_handle = handle.clone();
+                let tray_tracker = Arc::clone(&tracker);
                 TrayIconBuilder::new()
                     .icon(app.default_window_icon().unwrap().clone())
                     .tooltip("Nox")
@@ -889,6 +902,27 @@ pub fn run() {
                     .on_menu_event(move |app_handle, event| {
                         match event.id().as_ref() {
                             "quit" => {
+                                if tray_tracker.is_connected() {
+                                    #[cfg(target_os = "windows")]
+                                    {
+                                        use windows::core::{HSTRING, PCWSTR};
+                                        use windows::Win32::Foundation::HWND;
+
+                                        let text = HSTRING::from("A live tracking session is currently active. Are you sure you want to exit Nox?");
+                                        let caption = HSTRING::from("Exit Nox");
+                                        let confirm = unsafe {
+                                            MessageBoxW(
+                                                HWND::default(),
+                                                PCWSTR(text.as_wide().as_ptr()),
+                                                PCWSTR(caption.as_wide().as_ptr()),
+                                                0x00000004 | 0x00000030 | 0x00040000,
+                                            )
+                                        };
+                                        if confirm != 6 {
+                                            return;
+                                        }
+                                    }
+                                }
                                 IS_EXITING.store(true, std::sync::atomic::Ordering::Relaxed);
                                 app_handle.exit(0);
                             }

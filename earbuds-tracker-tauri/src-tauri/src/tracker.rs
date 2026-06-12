@@ -305,12 +305,18 @@ impl Tracker {
                 call_notify(&notify_disc);
                 run_event_script("disconnect", "");
 
-                // Start 5-second automatic exit on disconnect,
+                // Start 20-second automatic exit on disconnect,
                 // but only if the user hasn't manually opened the window.
                 let app_handle_exit = app_handle_disc.clone();
                 let tracker_exit = Arc::clone(&tracker_disc);
                 std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_secs(5));
+                    let start_time = std::time::Instant::now();
+                    std::thread::sleep(Duration::from_secs(20));
+                    let elapsed = start_time.elapsed().as_secs_f64();
+                    if elapsed > 25.0 {
+                        info!("System suspend/resume detected during exit delay (elapsed={:.2}s). Aborting exit.", elapsed);
+                        return;
+                    }
                     if !tracker_exit.is_connected() {
                         use tauri::Manager;
                         let win_visible = app_handle_exit
@@ -321,7 +327,7 @@ impl Tracker {
                             // User manually opened the window — respect that, don't exit.
                             info!("Disconnected but window is visible (user override). Staying alive.");
                         } else {
-                            info!("Still disconnected after 5 s (background mode). Exiting.");
+                            info!("Still disconnected after 20 s (background mode). Exiting.");
                             app_handle_exit.exit(0);
                         }
                     }
