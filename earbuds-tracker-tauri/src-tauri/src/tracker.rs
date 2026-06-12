@@ -353,6 +353,15 @@ impl Tracker {
                 call_notify(&notify_disc);
                 run_event_script("disconnect", "");
 
+                // Autopause on disconnect logic
+                if crate::load_settings().autopause_enabled {
+                    std::thread::spawn(|| {
+                        std::thread::sleep(Duration::from_millis(500));
+                        info!("Autopause: Device disconnected. Checking if we need to pause media.");
+                        crate::app_audio::perform_autopause();
+                    });
+                }
+
                 // Start 20-second automatic exit on disconnect,
                 // but only if the user hasn't manually opened the window.
                 let app_handle_exit = app_handle_disc.clone();

@@ -1197,7 +1197,7 @@ body.font-ndot .analytics-title {
   cursor: not-allowed;
 }
 .chart-tooltip {
-  position: absolute;
+  position: relative;
   z-index: 8;
   min-width: 180px;
   max-width: 240px;
@@ -1271,5 +1271,13 @@ body.font-ndot .analytics-title {
   cursor: not-allowed;
   border-color: var(--border) !important;
   color: var(--muted) !important;
+}
+
+/* Custom ApexCharts Tooltip Overrides */
+.apexcharts-tooltip {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  overflow: visible !important;
 }
 

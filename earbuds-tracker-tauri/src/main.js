@@ -73,6 +73,7 @@ let currentGoal = (() => {
 })();
 let notificationsEnabled = localStorage.getItem('notifications-enabled') !== 'false';
 let startupEnabled = localStorage.getItem('startup-enabled') === 'true';
+let autopauseEnabled = localStorage.getItem('autopause-enabled') !== 'false';
 let currentDeviceName = localStorage.getItem('target-device') || 'CMF Buds 2a';
 let fontStyle = localStorage.getItem('font-style') || 'default';
 let batteryPollIntervalSec = 10;
@@ -117,6 +118,7 @@ function storeTodayPlaybackSecs(secs) {
 const goalInput = document.getElementById('goal-input');
 const notificationToggle = document.getElementById('notification-toggle');
 const startupToggle = document.getElementById('startup-toggle');
+const autopauseToggle = document.getElementById('autopause-toggle');
 const deviceNameInput = document.getElementById('device-name-input');
 const fontStyleSelect = document.getElementById('font-style-select');
 const batteryStepSelect = document.getElementById('battery-step-select');
@@ -212,6 +214,34 @@ if (startupToggle) {
       startupEnabled = prev;
       startupToggle.checked = prev;
       localStorage.setItem('startup-enabled', prev);
+    }
+  });
+}
+
+if (autopauseToggle) {
+  autopauseToggle.checked = autopauseEnabled;
+  try {
+    invoke('get_autopause_enabled').then((serverEnabled) => {
+      autopauseEnabled = !!serverEnabled;
+      autopauseToggle.checked = autopauseEnabled;
+      localStorage.setItem('autopause-enabled', autopauseEnabled);
+    }).catch(console.error);
+  } catch (e) {
+    console.error('get_autopause_enabled failed', e);
+  }
+
+  autopauseToggle.addEventListener('change', async (e) => {
+    const desired = !!e.target.checked;
+    const prev = autopauseEnabled;
+    autopauseEnabled = desired;
+    localStorage.setItem('autopause-enabled', autopauseEnabled);
+    try {
+      await invoke('set_autopause_enabled', { enabled: desired });
+    } catch (err) {
+      console.error('set_autopause_enabled failed', err);
+      autopauseEnabled = prev;
+      autopauseToggle.checked = prev;
+      localStorage.setItem('autopause-enabled', prev);
     }
   });
 }
@@ -491,6 +521,7 @@ function buildSettingsBackup() {
     playback_goal: currentGoal,
     notifications_enabled: notificationsEnabled,
     startup_enabled: startupEnabled,
+    autopause_enabled: autopauseEnabled,
     target_device: currentDeviceName,
     font_style: fontStyle,
     battery_interval_secs: batteryPollIntervalSec,
@@ -580,6 +611,13 @@ async function restoreSettingsFromBackup(settings = {}) {
     await invoke('set_startup_enabled', { enabled: startupEnabled }).catch(console.error);
   }
 
+  if (typeof settings.autopause_enabled === 'boolean') {
+    autopauseEnabled = settings.autopause_enabled;
+    if (autopauseToggle) autopauseToggle.checked = autopauseEnabled;
+    localStorage.setItem('autopause-enabled', autopauseEnabled);
+    await invoke('set_autopause_enabled', { enabled: autopauseEnabled }).catch(console.error);
+  }
+
   await refreshSnapshot();
 
   updateDailyStatsAndChart();
@@ -664,6 +702,10 @@ async function checkBuildMode() {
     const tag = document.getElementById('debug-tag');
     if (tag) {
       tag.style.display = debugMode ? 'inline-block' : 'none';
+    }
+    // Disable right-click context menu in production release
+    if (!debugMode) {
+      window.addEventListener('contextmenu', e => e.preventDefault());
     }
   } catch (e) {
     console.error('Failed to check build mode', e);
@@ -849,6 +891,85 @@ function buildRadarBucketTooltipHtml(meta = {}) {
       `).join('')}
     </div>
   `;
+}
+
+function buildBatteryGraphTooltipHtml(pt, title = 'Session Details') {
+  if (!pt) return '';
+
+  const startDate = pt.ts || pt.session_start ? new Date(pt.ts || pt.session_start) : null;
+  const endDate = pt.session_end ? new Date(pt.session_end) : null;
+  
+  let differentDays = false;
+  if (startDate && !Number.isNaN(startDate.getTime())) {
+    const compareDate = endDate && !Number.isNaN(endDate.getTime()) ? endDate : new Date();
+    differentDays = startDate.toDateString() !== compareDate.toDateString();
+  }
+
+  const formatTimeStr = (tsStr) => {
+    if (!tsStr) return 'Active Now';
+    try {
+      const date = new Date(tsStr);
+      if (Number.isNaN(date.getTime())) return tsStr;
+      const timePart = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      if (differentDays) {
+        const datePart = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        return `${timePart} (${datePart})`;
+      }
+      return timePart;
+    } catch (e) {
+      return tsStr;
+    }
+  };
+
+  const formatDuration = (secs) => {
+    if (secs == null || secs < 0) return '0m';
+    const hrs = Math.floor(secs / 3600);
+    const mins = Math.round((secs % 3600) / 60);
+    if (hrs > 0) return `${hrs}h ${mins}m`;
+    return `${mins}m`;
+  };
+
+  const startL = pt.left_start != null ? `${pt.left_start}%` : '—';
+  const endL = pt.left_end != null ? `${pt.left_end}%` : '—';
+  const startR = pt.right_start != null ? `${pt.right_start}%` : '—';
+  const endR = pt.right_end != null ? `${pt.right_end}%` : '—';
+  const startC = pt.case_start != null ? `${pt.case_start}%` : '—';
+  const endC = pt.case_end != null ? `${pt.case_end}%` : '—';
+
+  return `
+    <div class="chart-tooltip">
+      <div class="tooltip-title">${escapeHtml(title)}</div>
+      <div class="tooltip-row"><span class="tooltip-label">Start Time</span><span class="tooltip-value">${escapeHtml(formatTimeStr(pt.ts || pt.session_start))}</span></div>
+      <div class="tooltip-row"><span class="tooltip-label">End Time</span><span class="tooltip-value">${escapeHtml(formatTimeStr(pt.session_end))}</span></div>
+      <div class="tooltip-row"><span class="tooltip-label">Connection</span><span class="tooltip-value">${escapeHtml(formatDuration(pt.connected_secs))}</span></div>
+      <div class="tooltip-row"><span class="tooltip-label">Playback</span><span class="tooltip-value">${escapeHtml(formatDuration(pt.playback_secs))}</span></div>
+      <div style="border-top: 1px solid rgba(255,255,255,0.08); margin: 6px 0;"></div>
+      <div class="tooltip-row"><span class="tooltip-label">Left Bud</span><span class="tooltip-value">${escapeHtml(startL)} → ${escapeHtml(endL)}</span></div>
+      <div class="tooltip-row"><span class="tooltip-label">Right Bud</span><span class="tooltip-value">${escapeHtml(startR)} → ${escapeHtml(endR)}</span></div>
+      <div class="tooltip-row"><span class="tooltip-label">Case</span><span class="tooltip-value">${escapeHtml(startC)} → ${escapeHtml(endC)}</span></div>
+    </div>
+  `;
+}
+
+function createXAxisFormatter(cats) {
+  return function(val) {
+    if (!val) return '';
+    const parts = val.split(' ');
+    if (parts.length === 3) {
+      const month = parts[0];
+      const day = parts[1];
+      const time = parts[2];
+      const idx = cats ? cats.indexOf(val) : -1;
+      if (idx > 0 && cats[idx - 1]) {
+        const prevParts = cats[idx - 1].split(' ');
+        if (prevParts.length === 3 && prevParts[0] === month) {
+          return `${day} · ${time}`;
+        }
+      }
+      return `${month} ${day} · ${time}`;
+    }
+    return val;
+  };
 }
 
 
@@ -2896,19 +3017,9 @@ async function loadBatteryGraph() {
         shared: false,
         intersect: true,
         custom: function ({ seriesIndex, dataPointIndex, w }) {
-          const rawValue = w.globals.series?.[seriesIndex]?.[dataPointIndex] ?? 0;
-          const label = w.globals.labels?.[dataPointIndex] || categories[dataPointIndex] || 'Radar summary';
-          return buildRadarBucketTooltipHtml({
-            durationLabel: radarDurationLabel,
-            itemLabel: radarItemLabel,
-            bucketLabel: label,
-            seriesLabel: w.globals.seriesNames?.[seriesIndex] || series?.[seriesIndex]?.name || radarItemLabel,
-            value: rawValue,
-            rowCount: rawData.length,
-            left: leftLevels[dataPointIndex] ?? 0,
-            right: rightLevels[dataPointIndex] ?? 0,
-            case: caseLevels[dataPointIndex] ?? 0,
-          });
+          const radarRows = duration === 'session' ? [rawData[0]] : rawData.slice(-6);
+          const pt = duration === 'session' ? rawData[0] : radarRows[dataPointIndex];
+          return buildBatteryGraphTooltipHtml(pt, duration === 'session' ? 'Current Session' : `Session: ${pt ? pt.label : 'Details'}`);
         }
       };
     } else {
@@ -2994,11 +3105,18 @@ async function loadBatteryGraph() {
     },
     tooltip: {
       theme: 'dark',
-      x: { show: true },
-      y: {
-        formatter: function (val) {
-          return val + '%';
+      custom: function({ series, seriesIndex, dataPointIndex, w }) {
+        if (chartType === 'pie' || chartType === 'donut') {
+          const val = w.globals.series[seriesIndex] ?? series[seriesIndex] ?? 0;
+          const label = w.globals.labels[seriesIndex] || '';
+          return `
+            <div class="chart-tooltip" style="min-width: 120px; padding: 8px 10px;">
+              <div class="tooltip-title" style="margin-bottom: 0;">${escapeHtml(label)}: <strong>${val}%</strong></div>
+            </div>
+          `;
         }
+        const pt = duration === 'session' ? rawData[0] : rawData[dataPointIndex];
+        return buildBatteryGraphTooltipHtml(pt, duration === 'session' ? 'Current Session' : `Session: ${pt ? pt.label : 'Details'}`);
       }
     },
     legend: {
@@ -3087,7 +3205,8 @@ async function loadBatteryGraph() {
       labels: {
         style: { colors: '#888898', fontSize: '11px' },
         hideOverlappingLabels: true,
-        trim: true
+        trim: true,
+        formatter: createXAxisFormatter(categories)
       }
     };
 
@@ -3234,7 +3353,8 @@ async function loadBatteryGraph() {
       labels: {
         show: true,
         style: { colors: '#888898', fontSize: '11px' },
-        trim: true
+        trim: true,
+        formatter: createXAxisFormatter(radarCategories)
       }
     };
 
