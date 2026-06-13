@@ -1,6 +1,6 @@
 # Nox
 
-A hybrid background tracking utility and desktop dashboard for monitoring Bluetooth earbuds connection time, active media playback duration, and battery levels on Windows. 
+A lightweight Windows background tracking utility and desktop dashboard for monitoring Bluetooth earbuds connection time, active media playback duration, and battery levels.
 
 Designed for **Nothing** and **CMF** earbuds, with development and testing primarily focused on the **CMF Buds 2a**. Built using **Rust**, **Tauri (v2)**, and **SQLite**.
 
