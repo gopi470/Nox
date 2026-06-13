@@ -47,6 +47,10 @@ impl BluetoothMonitor {
         self.connected.load(Ordering::SeqCst)
     }
 
+    pub fn reset_connection_state(&self) {
+        self.connected.store(false, Ordering::SeqCst);
+    }
+
     /// Spawn background polling thread.
     pub fn start(
         &self,
@@ -66,10 +70,19 @@ impl BluetoothMonitor {
                 }
 
                 let mut last: Option<bool> = None;
+                let mut last_dev_name = String::new();
 
                 while !stop_flag.load(Ordering::SeqCst) {
-                    let dev_name = device_name_lock.read().to_lowercase();
-                    let now_connected = check_connected(&dev_name);
+                    let dev_name = device_name_lock.read().clone();
+
+                    if dev_name != last_dev_name {
+                        last_dev_name = dev_name.clone();
+                        last = None;
+                        connected.store(false, Ordering::SeqCst);
+                    }
+
+                    let dev_name_lower = dev_name.to_lowercase();
+                    let now_connected = check_connected(&dev_name_lower);
 
                     if Some(now_connected) != last {
                         let prev = last; // capture before updating

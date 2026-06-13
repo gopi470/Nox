@@ -17,6 +17,38 @@ fn db_path() -> &'static PathBuf {
     })
 }
 
+pub fn get_profile_db_path(device_name: &str) -> PathBuf {
+    let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".into());
+    let dir = PathBuf::from(appdata).join("EarbudsTracker");
+    std::fs::create_dir_all(&dir).ok();
+
+    let name = if device_name.trim().is_empty() { "default" } else { device_name.trim() };
+    let sanitized: String = name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .collect();
+
+    dir.join(format!("query_log_{}.db", sanitized))
+}
+
+pub fn get_all_profile_db_paths() -> Vec<(String, PathBuf)> {
+    let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".into());
+    let dir = PathBuf::from(appdata).join("EarbudsTracker");
+    let mut files = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(filename) = path.file_name().and_then(|s| s.to_str()) {
+                if filename.starts_with("query_log_") && filename.ends_with(".db") {
+                    let profile_name = &filename[10..filename.len() - 3];
+                    files.push((profile_name.to_string(), path));
+                }
+            }
+        }
+    }
+    files
+}
+
 fn conn() -> &'static Mutex<Connection> {
     CONN.get_or_init(|| {
         #[cfg(not(test))]
@@ -167,19 +199,34 @@ pub fn add_to_daily(day: &NaiveDate, connected: f64, playback: f64) {
 }
 
 pub fn insert_query_log(
+    device_name: &str,
     session_id: i64,
     session_start: &str,
     event_ts: &str,
     action: &str,
     details: &str,
 ) {
-    let db = conn().lock();
-    db.execute(
-        "INSERT INTO query_logs (session_id, session_start, event_ts, action, details)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![session_id, session_start, event_ts, action, details],
-    )
-    .ok();
+    let db_path = get_profile_db_path(device_name);
+    if let Ok(db) = Connection::open(&db_path) {
+        db.execute_batch(
+            "CREATE TABLE IF NOT EXISTS query_logs (
+                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                 session_id     INTEGER NOT NULL,
+                 session_start  TEXT NOT NULL,
+                 event_ts       TEXT NOT NULL,
+                 action         TEXT NOT NULL,
+                 details        TEXT NOT NULL
+             );
+             CREATE INDEX IF NOT EXISTS idx_query_logs_session_time
+                 ON query_logs(session_id, event_ts DESC);"
+        ).ok();
+
+        db.execute(
+            "INSERT INTO query_logs (session_id, session_start, event_ts, action, details)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![session_id, session_start, event_ts, action, details],
+        ).ok();
+    }
 }
 
 // ── Query helpers ────────────────────────────────────────────────────────────
@@ -229,18 +276,35 @@ pub struct QueryLogRow {
 }
 
 pub fn get_query_log(device_name: &str, limit: usize) -> Vec<QueryLogRow> {
-    let db = conn().lock();
-    let mut stmt = db
-        .prepare(
-            "SELECT q.id, q.session_id, q.session_start, q.event_ts, q.action, q.details
-             FROM query_logs q
-             INNER JOIN sessions s ON q.session_id = s.id
-             WHERE s.device_name = ?1
-             ORDER BY q.id DESC
-             LIMIT ?2",
-        )
-        .expect("prepare failed");
-    stmt.query_map(params![device_name, limit as i64], |row| {
+    let db_path = get_profile_db_path(device_name);
+    let db = match Connection::open(&db_path) {
+        Ok(d) => d,
+        Err(_) => return Vec::new(),
+    };
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS query_logs (
+             id             INTEGER PRIMARY KEY AUTOINCREMENT,
+             session_id     INTEGER NOT NULL,
+             session_start  TEXT NOT NULL,
+             event_ts       TEXT NOT NULL,
+             action         TEXT NOT NULL,
+             details        TEXT NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_query_logs_session_time
+             ON query_logs(session_id, event_ts DESC);"
+    ).ok();
+
+    let mut stmt = match db.prepare(
+        "SELECT id, session_id, session_start, event_ts, action, details
+         FROM query_logs
+         ORDER BY id DESC
+         LIMIT ?1"
+    ) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+
+    stmt.query_map(params![limit as i64], |row| {
         Ok(QueryLogRow {
             id: row.get(0)?,
             session_id: row.get(1)?,
@@ -348,27 +412,54 @@ pub fn get_all_app_audio_events() -> Vec<AppAudioEventBackupRow> {
 }
 
 pub fn get_all_query_logs() -> Vec<QueryLogRow> {
-    let db = conn().lock();
-    let mut stmt = db
-        .prepare(
-            "SELECT id, session_id, session_start, event_ts, action, details
-             FROM query_logs
-             ORDER BY id ASC",
-        )
-        .expect("prepare failed");
-    stmt.query_map([], |row| {
-        Ok(QueryLogRow {
-            id: row.get(0)?,
-            session_id: row.get(1)?,
-            session_start: row.get(2)?,
-            event_ts: row.get(3)?,
-            action: row.get(4)?,
-            details: row.get(5)?,
-        })
-    })
-    .unwrap()
-    .filter_map(|r| r.ok())
-    .collect()
+    let mut all_logs = Vec::new();
+    
+    // 1. Read from profile-specific DB files
+    for (_, path) in get_all_profile_db_paths() {
+        if let Ok(db) = Connection::open(&path) {
+            if let Ok(mut stmt) = db.prepare(
+                "SELECT id, session_id, session_start, event_ts, action, details
+                 FROM query_logs
+                 ORDER BY id ASC"
+            ) {
+                if let Ok(rows) = stmt.query_map([], |row| {
+                    Ok(QueryLogRow {
+                        id: row.get(0)?,
+                        session_id: row.get(1)?,
+                        session_start: row.get(2)?,
+                        event_ts: row.get(3)?,
+                        action: row.get(4)?,
+                        details: row.get(5)?,
+                    })
+                }) {
+                    all_logs.extend(rows.filter_map(|r| r.ok()));
+                }
+            }
+        }
+    }
+    
+    // 2. Also read legacy logs from the main DB if any exist
+    let main_db = conn().lock();
+    if let Ok(mut stmt) = main_db.prepare(
+        "SELECT id, session_id, session_start, event_ts, action, details
+         FROM query_logs
+         ORDER BY id ASC"
+    ) {
+        if let Ok(rows) = stmt.query_map([], |row| {
+            Ok(QueryLogRow {
+                id: row.get(0)?,
+                session_id: row.get(1)?,
+                session_start: row.get(2)?,
+                event_ts: row.get(3)?,
+                action: row.get(4)?,
+                details: row.get(5)?,
+            })
+        }) {
+            all_logs.extend(rows.filter_map(|r| r.ok()));
+        }
+    }
+    
+    all_logs
 }
 
 pub fn export_backup() -> BackupData {
@@ -381,6 +472,11 @@ pub fn export_backup() -> BackupData {
 }
 
 pub fn import_backup(backup: &BackupData, default_device_name: &str) {
+    // 1. Delete all existing profile-specific query log DB files
+    for (_, path) in get_all_profile_db_paths() {
+        let _ = std::fs::remove_file(path);
+    }
+
     let mut db = conn().lock();
     let tx = db.transaction().expect("begin import transaction failed");
 
@@ -446,20 +542,42 @@ pub fn import_backup(backup: &BackupData, default_device_name: &str) {
         .expect("failed to import app audio row");
     }
 
+    // Import query logs to their profile-specific databases
     for row in &backup.query_logs {
-        tx.execute(
-            "INSERT INTO query_logs (id, session_id, session_start, event_ts, action, details)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                row.id,
-                row.session_id,
-                row.session_start,
-                row.event_ts,
-                row.action,
-                row.details,
-            ],
-        )
-        .expect("failed to import query log row");
+        let dev_name = backup.sessions.iter()
+            .find(|s| s.id == row.session_id)
+            .and_then(|s| s.device_name.as_deref())
+            .unwrap_or(default_device_name);
+        let dev_name = if dev_name.is_empty() { default_device_name } else { dev_name };
+
+        let db_path = get_profile_db_path(dev_name);
+        if let Ok(db_conn) = Connection::open(&db_path) {
+            db_conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS query_logs (
+                     id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                     session_id     INTEGER NOT NULL,
+                     session_start  TEXT NOT NULL,
+                     event_ts       TEXT NOT NULL,
+                     action         TEXT NOT NULL,
+                     details        TEXT NOT NULL
+                 );
+                 CREATE INDEX IF NOT EXISTS idx_query_logs_session_time
+                     ON query_logs(session_id, event_ts DESC);"
+            ).ok();
+
+            db_conn.execute(
+                "INSERT INTO query_logs (id, session_id, session_start, event_ts, action, details)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    row.id,
+                    row.session_id,
+                    row.session_start,
+                    row.event_ts,
+                    row.action,
+                    row.details,
+                ],
+            ).ok();
+        }
     }
 
     tx.commit().expect("commit import transaction failed");
@@ -480,6 +598,8 @@ pub struct SessionRow {
     pub bat_case_disc:     Option<i64>,
     pub firmware:          Option<String>,
     pub interrupted:       i64,
+    #[serde(default)]
+    pub device_name: Option<String>,
 }
 
 pub fn get_recent_sessions(device_name: &str, limit: usize) -> Vec<SessionRow> {
@@ -488,7 +608,7 @@ pub fn get_recent_sessions(device_name: &str, limit: usize) -> Vec<SessionRow> {
         .prepare(
             "SELECT id, session_start, COALESCE(session_end,''), connected_secs, playback_secs,
                     bat_left_connect, bat_right_connect, bat_case_connect,
-                    bat_left_disc, bat_right_disc, bat_case_disc, firmware, interrupted
+                    bat_left_disc, bat_right_disc, bat_case_disc, firmware, interrupted, device_name
              FROM sessions 
              WHERE device_name = ?1
              ORDER BY id DESC LIMIT ?2",
@@ -509,6 +629,7 @@ pub fn get_recent_sessions(device_name: &str, limit: usize) -> Vec<SessionRow> {
             bat_case_disc:     row.get(10)?,
             firmware:          row.get(11)?,
             interrupted:       row.get(12)?,
+            device_name:       row.get(13)?,
         })
     })
     .unwrap()
@@ -597,6 +718,11 @@ pub fn reset_all_data() {
          DELETE FROM sqlite_sequence WHERE name IN ('sessions', 'app_audio_events', 'query_logs');",
     )
     .ok();
+
+    // Delete all profile-specific query log files
+    for (_, path) in get_all_profile_db_paths() {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 pub fn delete_profile_data(device_name: &str) {
@@ -606,7 +732,7 @@ pub fn delete_profile_data(device_name: &str) {
         "DELETE FROM app_audio_events WHERE session_id IN (SELECT id FROM sessions WHERE device_name = ?1)",
         params![device_name],
     );
-    // 2. Delete query logs for matching sessions
+    // 2. Delete query logs for matching sessions (legacy)
     let _ = db.execute(
         "DELETE FROM query_logs WHERE session_id IN (SELECT id FROM sessions WHERE device_name = ?1)",
         params![device_name],
@@ -616,6 +742,12 @@ pub fn delete_profile_data(device_name: &str) {
         "DELETE FROM sessions WHERE device_name = ?1",
         params![device_name],
     );
+
+    // 4. Delete the profile-specific query log database file
+    let path = get_profile_db_path(device_name);
+    if path.exists() {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 // ── App Audio Events ─────────────────────────────────────────────────────────

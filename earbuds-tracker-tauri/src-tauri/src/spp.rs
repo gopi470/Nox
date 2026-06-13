@@ -552,6 +552,123 @@ fn read_battery_spp(device_name: &str, mac_hint: Option<&str>, brand: &str) -> O
 }
 
 #[cfg(target_os = "windows")]
+fn read_battery_airpods() -> Option<BatteryInfo> {
+    use windows::{
+        Devices::Bluetooth::Advertisement::{BluetoothLEAdvertisementWatcher, BluetoothLEAdvertisementReceivedEventArgs},
+        Foundation::TypedEventHandler,
+    };
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    log::info!("AirPods: starting BLE advertisement watcher...");
+    let result_battery = Arc::new(Mutex::new(None::<BatteryInfo>));
+    let result_battery_cb = Arc::clone(&result_battery);
+
+    let watcher = match BluetoothLEAdvertisementWatcher::new() {
+        Ok(w) => w,
+        Err(e) => {
+            log::warn!("AirPods: failed to create BLE watcher: {e}");
+            return None;
+        }
+    };
+
+    // Callback when advertisement is received
+    let token = watcher.Received(&TypedEventHandler::new(
+        move |_sender, args: &Option<BluetoothLEAdvertisementReceivedEventArgs>| {
+            if let Some(args) = args {
+                if let Ok(ad) = args.Advertisement() {
+                    if let Ok(sections) = ad.DataSections() {
+                        for section in sections {
+                            let data_type = section.DataType().unwrap_or(0);
+                            if data_type == 0xFF {
+                                if let Ok(data_buffer) = section.Data() {
+                                    if let Ok(data_reader) = windows::Storage::Streams::DataReader::FromBuffer(&data_buffer) {
+                                        let len = data_reader.UnconsumedBufferLength().unwrap_or(0) as usize;
+                                        if len >= 10 {
+                                            let mut buf = vec![0u8; len];
+                                            if data_reader.ReadBytes(&mut buf).is_ok() {
+                                                // Apple Company ID: 0x4C, 0x00
+                                                // Protocol ID: 0x07
+                                                // Length: 0x19
+                                                if buf[0] == 0x4C && buf[1] == 0x00 && buf[2] == 0x07 && buf[3] == 0x19 {
+                                                    let right_val = buf[7] & 0x0F;
+                                                    let left_val = (buf[8] >> 4) & 0x0F;
+                                                    let charging_status = buf[8] & 0x0F;
+                                                    let case_val = (buf[9] >> 4) & 0x0F;
+
+                                                    let left = if left_val <= 10 { Some(left_val * 10) } else { None };
+                                                    let right = if right_val <= 10 { Some(right_val * 10) } else { None };
+                                                    let case = if case_val <= 10 { Some(case_val * 10) } else { None };
+
+                                                    let left_chg = (charging_status & 0x01) != 0;
+                                                    let right_chg = (charging_status & 0x02) != 0;
+                                                    let case_chg = (charging_status & 0x04) != 0;
+
+                                                    if left.is_some() || right.is_some() || case.is_some() {
+                                                        let info = BatteryInfo {
+                                                            left,
+                                                            left_charging: left_chg,
+                                                            right,
+                                                            right_charging: right_chg,
+                                                            case,
+                                                            case_charging: case_chg,
+                                                            updated_at: Some(chrono::Local::now().timestamp_millis() as u64),
+                                                        };
+                                                        let mut res = result_battery_cb.lock().unwrap();
+                                                        *res = Some(info);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+    ));
+
+    let token = match token {
+        Ok(t) => t,
+        Err(e) => {
+            log::warn!("AirPods: failed to register event handler: {e}");
+            return None;
+        }
+    };
+
+    if let Err(e) = watcher.Start() {
+        log::warn!("AirPods: failed to start BLE watcher: {e}");
+        return None;
+    }
+
+    // Wait for up to 3 seconds for a packet to arrive
+    let start_time = Instant::now();
+    while start_time.elapsed() < Duration::from_secs(3) {
+        {
+            let res = result_battery.lock().unwrap();
+            if res.is_some() {
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let _ = watcher.Stop();
+    let _ = watcher.RemoveReceived(token);
+
+    let final_res = result_battery.lock().unwrap().clone();
+    if final_res.is_some() {
+        log::info!("AirPods: successfully sniffed battery via BLE: {:?}", final_res);
+    } else {
+        log::warn!("AirPods: timed out waiting for BLE advertisement packet");
+    }
+    final_res
+}
+
+#[cfg(target_os = "windows")]
 fn read_battery_pnp(device_name: &str) -> Option<BatteryInfo> {
     use std::os::windows::process::CommandExt;
     let safe_name = device_name.replace('\'', "''");
@@ -602,8 +719,13 @@ pub fn read_battery(
     brand: &str,
     protocol_mode: &str,
 ) -> (Option<BatteryInfo>, &'static str) {
-    // Generic / Other / AirPods — PnP only, never attempt SPP
-    if brand == "generic_other" || brand == "apple_airpods" {
+    // AirPods has its own dedicated handler (passive BLE advertisement sniffing)
+    if brand == "apple_airpods" {
+        return (read_battery_airpods(), "proprietary");
+    }
+
+    // Generic / Other — PnP only, never attempt SPP
+    if brand == "generic_other" {
         return (read_battery_pnp(device_name), "standard");
     }
 

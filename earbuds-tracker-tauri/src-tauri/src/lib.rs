@@ -597,7 +597,17 @@ fn verify_windows_password(password: String) -> bool {
             unsafe { let _ = CloseHandle(token); }
             true
         } else {
-            false
+            let err = unsafe { windows::Win32::Foundation::GetLastError() };
+            log::warn!("LogonUserW failed for user '{}' with error {:?}", username, err);
+            // 1327 = ERROR_ACCOUNT_RESTRICTION
+            // If logon fails with ERROR_ACCOUNT_RESTRICTION when password is empty,
+            // it means the account has a blank/empty password, but logon is restricted by policy.
+            if password.is_empty() && err.0 == 1327 {
+                log::info!("Bypassing verification: account has a blank/empty password");
+                true
+            } else {
+                false
+            }
         }
     }
     #[cfg(not(target_os = "windows"))]
@@ -1021,7 +1031,9 @@ pub fn run() {
         }
     }
 
-    if !settings.target_device.trim().is_empty() {
+    if !settings.active_device.trim().is_empty() {
+        initial_device = settings.active_device.clone();
+    } else if !settings.target_device.trim().is_empty() {
         initial_device = settings.target_device.clone();
     }
     initial_interval = settings.battery_interval;

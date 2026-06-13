@@ -357,7 +357,7 @@
                   <option value="month">Month</option>
                 </select>
               </div>
-              <div class="filter-group">
+              <div class="filter-group" id="graph-item-container">
                 <label for="graph-item">Item</label>
                 <select id="graph-item" class="filter-select">
                   <option value="left">Left Bud</option>
@@ -1058,7 +1058,7 @@
       <div class="dialog-title" style="display:flex;align-items:center;justify-content:space-between;width:100%; padding-right: 20px;">
         <span>🎧 Earbud Profiles</span>
         <div style="display:flex;background:rgba(255,255,255,0.06);padding:2px;border-radius:6px;border:1px solid var(--border); margin-right: 14px;">
-          <button id="switch-tab-edit" style="font-size:11px;padding:4px 10px;border:0;background:var(--accent);color:#fff;border-radius:4px;cursor:pointer;font-weight:600;transition:all 0.2s;">Edit</button>
+          <button id="switch-tab-edit" style="font-size:11px;padding:4px 10px;border:0;background:var(--accent);color:#fff;border-radius:4px;cursor:pointer;font-weight:600;transition:all 0.2s;">View</button>
           <button id="switch-tab-add" style="font-size:11px;padding:4px 10px;border:0;background:transparent;color:var(--muted);border-radius:4px;cursor:pointer;font-weight:600;transition:all 0.2s;">Add</button>
           <button id="switch-tab-paired" style="font-size:11px;padding:4px 10px;border:0;background:transparent;color:var(--muted);border-radius:4px;cursor:pointer;font-weight:600;transition:all 0.2s;">Paired</button>
         </div>
@@ -1079,7 +1079,7 @@
           
           <div style="margin-bottom: 12px;">
             <label style="display: block; font-size: 11px; margin-bottom: 4px; font-weight: 600;">Brand / Manufacturer</label>
-            <select id="edit-profile-brand" class="input-field" style="width: 100%;">
+            <select id="edit-profile-brand" class="input-field" style="width: 100%; background: rgba(255,255,255,0.04); cursor: not-allowed;" disabled>
               <!-- Populated dynamically from PROTOCOL_DB -->
             </select>
             <div id="edit-profile-proto-status" style="display:none; align-items:center; gap:6px; font-size:10px; margin-top:6px; padding:5px 8px; border-radius:6px; background:rgba(129,140,248,0.08); border:1px solid rgba(129,140,248,0.18);">
@@ -1089,8 +1089,7 @@
           </div>
 
           <div style="display: flex; gap: 8px; margin-top: 16px;">
-            <button class="btn btn-danger" id="btn-delete-profile" style="flex: 1; font-size: 11px; padding: 7px 12px;">Delete Profile</button>
-            <button class="btn" id="btn-save-edit-profile" style="flex: 1; font-size: 11px; padding: 7px 12px; border-color: var(--accent); color: var(--text);">Save Changes</button>
+            <button class="btn btn-danger" id="btn-delete-profile" style="width: 100%; font-size: 11px; padding: 7px 12px;">Delete Profile</button>
           </div>
         </div>
 

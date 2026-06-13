@@ -48,8 +48,8 @@ const PROTOCOL_DB = [
     models: 'AirPods (all gen), AirPods Pro, AirPods Max',
     transport: 'BLE Advertisement (no connection needed)',
     uuid: 'N/A — passive BLE beacon sniffing (Company ID: 0x004C)',
-    status: 'Not implemented',
-    statusClass: 'badge-notimpl',
+    status: 'Implemented ✓',
+    statusClass: 'badge-implemented',
     request: 'N/A — passive listen only',
     response: 'FF 4C 00 07 19 <type> <flags> <left_bat> <right_bat> <case_bat> <charging_mask> ...',
     notes: 'Manufacturer data broadcast continuously. Battery = nibble × 10 → %. 0x0F = pod not in ear. Charging mask: bit0=L, bit1=R, bit2=Case.',
@@ -147,12 +147,10 @@ let startupEnabled = localStorage.getItem('startup-enabled') === 'true';
 let autopauseEnabled = localStorage.getItem('autopause-enabled') !== 'false';
 let activeProfile = null;
 let deviceProfiles = [];
-let currentDeviceName = localStorage.getItem('target-device') || 'CMF Buds 2a';
+let currentDeviceName = 'CMF Buds 2a';
 let fontStyle = localStorage.getItem('font-style') || 'default';
 let batteryPollIntervalSec = 10;
 
-// Send initial device name to backend
-invoke('set_device_name', { name: currentDeviceName }).catch(console.error);
 
 // State trackers for notifications & animations
 let wasConnected = null;
@@ -713,7 +711,6 @@ async function restoreSettingsFromBackup(settings = {}) {
 
   if (typeof settings.target_device === 'string' && settings.target_device.trim()) {
     currentDeviceName = settings.target_device.trim();
-    localStorage.setItem('target-device', currentDeviceName);
     const deviceSelect = document.getElementById('device-name-select');
     if (deviceSelect && deviceSelect.value !== currentDeviceName && [...deviceSelect.options].some(opt => opt.value === currentDeviceName)) {
       deviceSelect.value = currentDeviceName;
@@ -721,7 +718,6 @@ async function restoreSettingsFromBackup(settings = {}) {
     if (deviceNameInput) deviceNameInput.value = currentDeviceName;
     const dashboardSub = document.getElementById('dashboard-sub');
     if (dashboardSub) dashboardSub.textContent = `Real-time connection monitoring for ${currentDeviceName}`;
-    await invoke('set_device_name', { name: currentDeviceName }).catch(console.error);
   }
 
   if (typeof settings.font_style === 'string' && settings.font_style.trim()) {
@@ -769,16 +765,20 @@ async function loadDeviceProfiles() {
     const [active, profiles] = await invoke('get_device_profiles');
     deviceProfiles = profiles;
     activeProfile = profiles.find(p => p.friendly_name === active) || profiles[0];
-    currentDeviceName = active;
+    currentDeviceName = activeProfile ? activeProfile.friendly_name : 'No Active Device';
     
     // Update active device UI elements (both dashboard and settings)
     const activeNameEl = document.getElementById('active-earbud-name');
     if (activeNameEl) {
-      activeNameEl.textContent = activeProfile ? activeProfile.friendly_name : 'No Active Device';
+      activeNameEl.textContent = currentDeviceName;
     }
     const activeNameSettingsEl = document.getElementById('active-earbud-name-settings');
     if (activeNameSettingsEl) {
-      activeNameSettingsEl.textContent = activeProfile ? activeProfile.friendly_name : 'No Active Device';
+      activeNameSettingsEl.textContent = currentDeviceName;
+    }
+    const dashboardSub = document.getElementById('dashboard-sub');
+    if (dashboardSub) {
+      dashboardSub.textContent = `Real-time connection monitoring for ${currentDeviceName}`;
     }
     
     // Render dropdown list
@@ -792,7 +792,7 @@ async function loadDeviceProfiles() {
 }
 
 function updateBatteryCardLayout() {
-  const isUnified = activeProfile && (activeProfile.protocol_mode === 'standard' || activeProfile.brand !== 'Nothing');
+  const isUnified = activeProfile && (activeProfile.protocol_mode === 'standard' || activeProfile.brand === 'generic_other');
   
   const leftCol = document.getElementById('bat-left-container');
   const caseCol = document.getElementById('bat-case-container');
@@ -898,7 +898,6 @@ async function selectActiveProfile(name) {
     const profile = await invoke('switch_active_profile', { name });
     activeProfile = profile;
     currentDeviceName = name;
-    localStorage.setItem('target-device', name);
     
     // Update active earbud name badge (both dashboard and settings)
     const nameEl = document.getElementById('active-earbud-name');
@@ -1120,7 +1119,7 @@ function renderPairedDevicesList(paired) {
       const allSlotsFilled = profilesForThisName >= pairedWithThisName;
 
       if (allSlotsFilled) {
-        actionBtn.textContent = 'Edit Profile';
+        actionBtn.textContent = 'View Profile';
         actionBtn.addEventListener('click', () => {
           const select = document.getElementById('profile-select-dropdown');
           if (select) {
@@ -1282,6 +1281,13 @@ function populateBrandDropdowns() {
   selects.forEach(sel => {
     if (!sel) return;
     sel.innerHTML = '';
+    
+    // Add "None Selected" placeholder
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'None Selected';
+    sel.appendChild(placeholder);
+
     PROTOCOL_DB.forEach(entry => {
       const opt = document.createElement('option');
       opt.value = entry.key;
@@ -1296,25 +1302,56 @@ function populateBrandDropdowns() {
 }
 populateBrandDropdowns();
 
-function updateBrandHint(brandKey, statusElId, textElId) {
+function updateBrandHint(brandKey, statusElId, textElId, activeMode = null) {
   const statusEl = document.getElementById(statusElId);
   const textEl = document.getElementById(textElId);
   if (!statusEl || !textEl) return;
+
+  if (!brandKey) {
+    statusEl.style.display = 'none';
+    textEl.innerHTML = '';
+    return;
+  }
+
+  let hintText = '';
   if (brandKey === 'generic_other') {
     statusEl.style.display = 'flex';
-    textEl.textContent = 'Generic: will use Standard GATT BAS only (no SPP probe).';
+    hintText = 'Generic: will use Standard GATT BAS only (no SPP probe).';
+    if (activeMode) {
+      hintText += '\nCurrently using: Standard GATT BAS';
+    }
+  } else if (brandKey === 'apple_airpods') {
+    statusEl.style.display = 'flex';
+    hintText = 'Will sniff passive BLE advertisements (Company ID: 0x004C).';
+    if (activeMode) {
+      hintText += '\nCurrently using: BLE Sniffing';
+    }
   } else {
     const entry = PROTOCOL_DB.find(e => e.key === brandKey);
     if (entry) {
       statusEl.style.display = 'flex';
       if (entry.status === 'Implemented ✓') {
-        textEl.textContent = `Will try Proprietary RFCOMM (${entry.brand}) first, fall back to GATT on failure.`;
+        hintText = `Will try Proprietary RFCOMM (${entry.brand}) first, fall back to GATT on failure.`;
       } else {
-        textEl.textContent = `Protocol documented but not yet implemented — will probe SPP then fall back to GATT.`;
+        hintText = `Protocol documented but not yet implemented — will probe SPP then fall back to GATT.`;
+      }
+
+      if (activeMode) {
+        let modeDisplay = 'Auto-Detect (Connecting...)';
+        if (activeMode === 'proprietary') {
+          modeDisplay = 'Proprietary RFCOMM';
+        } else if (activeMode === 'standard') {
+          modeDisplay = 'Standard GATT BAS';
+        }
+        hintText += `\nCurrently using: ${modeDisplay}`;
       }
     } else {
       statusEl.style.display = 'none';
     }
+  }
+
+  if (hintText) {
+    textEl.innerHTML = hintText.replace(/\n/g, '<br>');
   }
 }
 
@@ -1330,7 +1367,8 @@ if (profileSelectDropdown) {
       updateBrandHint(
         p.brand || 'generic_other',
         'edit-profile-proto-status',
-        'edit-profile-proto-text'
+        'edit-profile-proto-text',
+        p.protocol_mode
       );
     }
   });
@@ -1339,7 +1377,10 @@ if (profileSelectDropdown) {
 const editBrandEl = document.getElementById('edit-profile-brand');
 if (editBrandEl) {
   editBrandEl.addEventListener('change', () => {
-    updateBrandHint(editBrandEl.value, 'edit-profile-proto-status', 'edit-profile-proto-text');
+    const selectedName = profileSelectDropdown.value;
+    const p = deviceProfiles.find(x => x.friendly_name === selectedName);
+    const activeMode = p && p.brand === editBrandEl.value ? p.protocol_mode : 'auto';
+    updateBrandHint(editBrandEl.value, 'edit-profile-proto-status', 'edit-profile-proto-text', activeMode);
   });
 }
 
@@ -1383,7 +1424,10 @@ function resetProfileForm() {
     }
     selectDevice.dispatchEvent(new Event('change'));
   }
-  if (brandInput) brandInput.value = 'Nothing';
+  if (brandInput) {
+    brandInput.value = '';
+    brandInput.dispatchEvent(new Event('change'));
+  }
   if (protoInput) protoInput.value = 'auto';
 }
 
@@ -1425,6 +1469,10 @@ if (btnSaveEditProfile) {
       return;
     }
     const brand = document.getElementById('edit-profile-brand').value;
+    if (!brand) {
+      showNotificationToast("Please select a brand/manufacturer.");
+      return;
+    }
     // If the brand changed vs what was previously saved, reset protocol_mode to 'auto'
     // so the first connection re-discovers the correct method.
     const existing = deviceProfiles.find(x => x.friendly_name === friendlyName);
@@ -1472,6 +1520,10 @@ if (btnCreateProfile) {
     const macAddress = (selectedOpt?.dataset?.mac || '').trim() || null;
 
     const brand = document.getElementById('add-profile-brand').value;
+    if (!brand) {
+      showNotificationToast("Please select a brand/manufacturer.");
+      return;
+    }
     
     // Read universal settings directly from global settings dropdowns
     const batteryInterval = parseInt(document.getElementById('battery-interval-select').value, 10) || 300;
@@ -1839,6 +1891,22 @@ function buildBatteryGraphTooltipHtml(pt, title = 'Session Details') {
   const startC = formatPct(pt.case_start);
   const endC = formatPct(pt.case_end);
 
+  const isUnified = activeProfile && (
+    activeProfile.protocol_mode === 'standard' || 
+    activeProfile.brand === 'generic_other'
+  );
+
+  let batteryRowsHtml = '';
+  if (isUnified) {
+    batteryRowsHtml = `<div class="tooltip-row"><span class="tooltip-label">Battery Level</span><span class="tooltip-value">${escapeHtml(startL)} → ${escapeHtml(endL)}</span></div>`;
+  } else {
+    batteryRowsHtml = `
+      <div class="tooltip-row"><span class="tooltip-label">Left Bud</span><span class="tooltip-value">${escapeHtml(startL)} → ${escapeHtml(endL)}</span></div>
+      <div class="tooltip-row"><span class="tooltip-label">Right Bud</span><span class="tooltip-value">${escapeHtml(startR)} → ${escapeHtml(endR)}</span></div>
+      <div class="tooltip-row"><span class="tooltip-label">Case</span><span class="tooltip-value">${escapeHtml(startC)} → ${escapeHtml(endC)}</span></div>
+    `;
+  }
+
   return `
     <div class="chart-tooltip">
       <div class="tooltip-title">${escapeHtml(title)}</div>
@@ -1847,9 +1915,7 @@ function buildBatteryGraphTooltipHtml(pt, title = 'Session Details') {
       <div class="tooltip-row"><span class="tooltip-label">Connection</span><span class="tooltip-value">${escapeHtml(formatDuration(pt.connected_secs))}</span></div>
       <div class="tooltip-row"><span class="tooltip-label">Playback</span><span class="tooltip-value">${escapeHtml(formatDuration(pt.playback_secs))}</span></div>
       <div style="border-top: 1px solid rgba(255,255,255,0.08); margin: 6px 0;"></div>
-      <div class="tooltip-row"><span class="tooltip-label">Left Bud</span><span class="tooltip-value">${escapeHtml(startL)} → ${escapeHtml(endL)}</span></div>
-      <div class="tooltip-row"><span class="tooltip-label">Right Bud</span><span class="tooltip-value">${escapeHtml(startR)} → ${escapeHtml(endR)}</span></div>
-      <div class="tooltip-row"><span class="tooltip-label">Case</span><span class="tooltip-value">${escapeHtml(startC)} → ${escapeHtml(endC)}</span></div>
+      ${batteryRowsHtml}
     </div>
   `;
 }
@@ -2992,7 +3058,7 @@ function updateBatteryUI(batteryInfo) {
     }
   };
 
-  const isUnified = activeProfile && (activeProfile.protocol_mode === 'standard' || activeProfile.brand !== 'Nothing');
+  const isUnified = activeProfile && (activeProfile.protocol_mode === 'standard' || activeProfile.brand === 'generic_other');
 
   const leftVal = batteryInfo ? batteryInfo.left : null;
   const leftChar = batteryInfo ? batteryInfo.left_charging : false;
@@ -3029,6 +3095,16 @@ function fmtSessBattery(r) {
     }
     return `${connStr} → ${discStr}`;
   };
+
+  const prof = typeof deviceProfiles !== 'undefined' ? deviceProfiles.find(p => p.friendly_name === r.device_name) : null;
+  const isUnifiedSess = (prof && (prof.protocol_mode === 'standard' || prof.brand === 'generic_other')) || 
+                        (!prof && r.bat_right_connect === null && r.bat_case_connect === null && r.bat_right_disc === null && r.bat_case_disc === null);
+
+  if (isUnifiedSess) {
+    return `<div class="mono" style="font-size:0.75rem;line-height:1.3;white-space:nowrap;">
+      Battery: ${formatBud(r.bat_left_connect, r.bat_left_disc)}
+    </div>`;
+  }
 
   return `<div class="mono" style="font-size:0.75rem;line-height:1.3;white-space:nowrap;">
     L: ${formatBud(r.bat_left_connect, r.bat_left_disc)}<br/>
@@ -3457,6 +3533,35 @@ function bdRenderDetail(bd, container) {
        </div>`
     : '';
 
+  const prof = typeof deviceProfiles !== 'undefined' ? deviceProfiles.find(p => p.friendly_name === s.device_name) : null;
+  const isUnifiedSess = (prof && (prof.protocol_mode === 'standard' || prof.brand === 'generic_other')) || 
+                        (!prof && s.bat_right_connect === null && s.bat_case_connect === null && s.bat_right_disc === null && s.bat_case_disc === null);
+
+  let batteryFieldsHtml = '';
+  if (isUnifiedSess) {
+    batteryFieldsHtml = `
+      <div class="bd-info-item">
+        <span class="bd-info-label">Battery</span>
+        <span class="bd-info-value" style="font-size:12px;">${drainStr(batL0, batL1)}</span>
+      </div>
+    `;
+  } else {
+    batteryFieldsHtml = `
+      <div class="bd-info-item">
+        <span class="bd-info-label">Left Earbud</span>
+        <span class="bd-info-value" style="font-size:12px;">${drainStr(batL0, batL1)}</span>
+      </div>
+      <div class="bd-info-item">
+        <span class="bd-info-label">Right Earbud</span>
+        <span class="bd-info-value" style="font-size:12px;">${drainStr(batR0, batR1)}</span>
+      </div>
+      <div class="bd-info-item">
+        <span class="bd-info-label">Case</span>
+        <span class="bd-info-value" style="font-size:12px;">${drainStr(batC0, batC1)}</span>
+      </div>
+    `;
+  }
+
   container.innerHTML = `
     ${interruptedBanner}
     <!-- ── Summary card ── -->
@@ -3479,18 +3584,7 @@ function bdRenderDetail(bd, container) {
           <span class="bd-info-label">Playback</span>
           <span class="bd-info-value green">${bdFmtDur(s.playback_secs)}</span>
         </div>
-        <div class="bd-info-item">
-          <span class="bd-info-label">Left Earbud</span>
-          <span class="bd-info-value" style="font-size:12px;">${drainStr(batL0, batL1)}</span>
-        </div>
-        <div class="bd-info-item">
-          <span class="bd-info-label">Right Earbud</span>
-          <span class="bd-info-value" style="font-size:12px;">${drainStr(batR0, batR1)}</span>
-        </div>
-        <div class="bd-info-item">
-          <span class="bd-info-label">Case</span>
-          <span class="bd-info-value" style="font-size:12px;">${drainStr(batC0, batC1)}</span>
-        </div>
+        ${batteryFieldsHtml}
         <div class="bd-info-item">
           <span class="bd-info-label">Top App</span>
           <span class="bd-info-value" style="font-size:12px;">${topApp ? escapeHtml(bdFmtAppName(topApp.process_name)) + ' · ' + bdFmtDur(topApp.total_secs) : '—'}</span>
@@ -3508,10 +3602,12 @@ function bdRenderDetail(bd, container) {
     <div class="card" id="bd-bat-card" style="${(batL0 == null && batR0 == null && batC0 == null) ? 'display:none' : ''}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <div class="bd-section-title" style="margin:0;">Battery Drain Curve</div>
+        ${isUnifiedSess ? '' : `
         <select id="bd-bat-series" class="input-field" style="width:180px;font-size:12px;padding:5px 10px;">
           <option value="buds">Buds (Left + Right avg)</option>
           <option value="case">Case</option>
         </select>
+        `}
       </div>
       <div class="bd-battery-canvas-wrap">
         <canvas id="bd-bat-canvas"></canvas>
@@ -3570,6 +3666,14 @@ function bdDrawBatteryCurve(s, mode) {
   const canvas = document.getElementById('bd-bat-canvas');
   if (!canvas) return;
   const wrap = canvas.parentElement;
+  
+  const prof = typeof deviceProfiles !== 'undefined' ? deviceProfiles.find(p => p.friendly_name === s.device_name) : null;
+  const isUnifiedSess = (prof && (prof.protocol_mode === 'standard' || prof.brand === 'generic_other')) || 
+                        (!prof && s.bat_right_connect === null && s.bat_case_connect === null && s.bat_right_disc === null && s.bat_case_disc === null);
+  const seriesDropdown = document.getElementById('bd-bat-series');
+  if (seriesDropdown) {
+    seriesDropdown.style.display = isUnifiedSess ? 'none' : 'block';
+  }
   const dpr = window.devicePixelRatio || 1;
   const W = wrap.clientWidth || 400;
   const H = 240;
@@ -3610,10 +3714,14 @@ function bdDrawBatteryCurve(s, mode) {
   c.textAlign = 'right';
   c.fillText('End', padL + chartW, H - 10);
 
-  // Determine series based on dropdown mode
+  // Determine series based on dropdown mode or unified status
   const resolvedMode = mode || document.getElementById('bd-bat-series')?.value || 'buds';
   let series;
-  if (resolvedMode === 'case') {
+  if (isUnifiedSess) {
+    series = [
+      { label: 'Battery', v0: s.bat_left_connect, v1: s.bat_left_disc, color: '#f97316' }
+    ].filter(sr => sr.v0 != null || sr.v1 != null);
+  } else if (resolvedMode === 'case') {
     series = [
       { label: 'Case', v0: s.bat_case_connect, v1: s.bat_case_disc, color: '#fbbf24' },
     ].filter(sr => sr.v0 != null || sr.v1 != null);
@@ -3677,9 +3785,9 @@ function bdDrawBatteryCurve(s, mode) {
         c.fillStyle = sr.color;
         c.font = 'bold 9px "Segoe UI", sans-serif';
         c.textAlign = 'center';
-        // Clamp label inside top padding
         const labelY = Math.max(padT - 6, pt.y - 10);
-        c.fillText(sr.label + ':' + pt.v + '%', pt.x, labelY);
+        const labelText = isUnifiedSess ? (pt.v + '%') : (sr.label + ':' + pt.v + '%');
+        c.fillText(labelText, pt.x, labelY);
       }
     });
   });
@@ -3740,12 +3848,12 @@ const graphTypeOptions = {
   radar: 'Radar Chart'
 };
 
-function syncGraphTypeOptions(item) {
+function syncGraphTypeOptions(item, isUnified = false) {
   const typeSelect = document.getElementById('graph-type');
   if (!typeSelect) return;
 
   const currentValue = typeSelect.value || 'line';
-  const allowedValues = item === 'all'
+  const allowedValues = (item === 'all' && !isUnified)
     ? ['line', 'area', 'bar', 'pie', 'donut', 'radar']
     : ['line', 'area', 'bar'];
 
@@ -3783,7 +3891,16 @@ async function loadBatteryGraph() {
     return `${hrs}:${mins} ${ampm}`;
   };
 
-  syncGraphTypeOptions(item);
+  const isUnified = activeProfile && (
+    activeProfile.protocol_mode === 'standard' || 
+    activeProfile.brand === 'generic_other'
+  );
+  const itemContainer = document.getElementById('graph-item-container');
+  if (itemContainer) {
+    itemContainer.style.display = isUnified ? 'none' : 'flex';
+  }
+
+  syncGraphTypeOptions(item, isUnified);
   const typeSelect = document.getElementById('graph-type');
   chartType = typeSelect?.value || chartType;
   if (item !== 'all' && chartType === 'radar') {
@@ -4101,7 +4218,10 @@ async function loadBatteryGraph() {
     const caseDrain = Math.max(0, (ptCaseStart ?? 0) - (caseE ?? 0));
     const avgDrain = roundToStep((leftDrain + rightDrain) / 2);
 
-    if (chartType === 'pie' || chartType === 'donut') {
+    if (isUnified) {
+      series = [{ name: 'Battery Level', data: [ptLeftStart ?? 0, leftE ?? 0] }];
+      colors = [greenColor];
+    } else if (chartType === 'pie' || chartType === 'donut') {
       if (item === 'left') {
         series = [leftDrain];
         categories = ['Left Bud'];
@@ -4373,7 +4493,10 @@ async function loadBatteryGraph() {
       };
     } else {
       // Line, Area, Bar
-      if (item === 'left') {
+      if (isUnified) {
+        series = [{ name: 'Battery Level', data: leftLevels }];
+        colors = [greenColor];
+      } else if (item === 'left') {
 
         series = [{ name: 'Left Bud', data: leftLevels }];
         colors = [greenColor];

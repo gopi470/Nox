@@ -392,6 +392,10 @@ code {
   z-index: 100;
 }
 .dialog-overlay[hidden] { display: none; }
+/* Stack sub-dialogs/confirmations/database views on top of main dialogs */
+#dialog, #auth-dialog, #reset-success-dialog, #switch-profile-dialog, #import-info-dialog, #import-success-dialog, #export-info-dialog, #export-success-dialog, #protocol-db-dialog {
+  z-index: 200;
+}
 .dialog-box {
   background: var(--bg2);
   border: 1px solid var(--border);

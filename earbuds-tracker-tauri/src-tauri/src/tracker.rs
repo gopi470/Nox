@@ -106,7 +106,17 @@ impl Tracker {
     }
 
     pub fn set_device_name(&self, new_name: &str) {
-        *self.device_name.write() = new_name.to_string();
+        let old_name = self.get_device_name();
+        if old_name != new_name {
+            {
+                let mut g = self.inner.lock();
+                finalise_session(&mut g);
+            }
+            *self.battery_cache.lock() = None;
+            self.bt.reset_connection_state();
+            *self.device_name.write() = new_name.to_string();
+            call_notify(&self.on_state_change);
+        }
     }
 
     pub fn get_device_name(&self) -> String {
@@ -165,12 +175,19 @@ impl Tracker {
         if dev.is_empty() {
             return None;
         }
+        let start_sess_id = self.get_active_session_id();
         self.record_query_log(
             "Battery query sent (Force)",
             format!("Polling {}", dev),
         );
         let previous_bat = self.battery_cache.lock().clone();
         let (bat_opt, effective_mode) = crate::spp::read_battery(&dev, mac.as_deref(), &brand, &protocol);
+        
+        // If device changed during query, abort immediately without updating cache or DB
+        if self.get_device_name() != dev {
+            return None;
+        }
+
         // If auto-discovery just ran, persist the discovered method
         if protocol == "auto" {
             self.set_protocol_mode(effective_mode);
@@ -192,14 +209,21 @@ impl Tracker {
                 .as_millis() as u64;
             bat.updated_at = Some(updated_at);
 
+            let log_details = if bat.right.is_none() && bat.case.is_none() {
+                format!("Battery={:?}", bat.left)
+            } else {
+                format!("L={:?} R={:?} C={:?}", bat.left, bat.right, bat.case)
+            };
             self.record_query_log(
                 "Battery response received (Force)",
-                format!("L={:?} R={:?} C={:?}", bat.left, bat.right, bat.case),
+                log_details,
             );
 
             *self.battery_cache.lock() = Some(bat.clone());
             if let Some(sess_id) = self.get_active_session_id() {
-                db::set_connect_battery(sess_id, bat.left, bat.right, bat.case);
+                if Some(sess_id) == start_sess_id {
+                    db::set_connect_battery(sess_id, bat.left, bat.right, bat.case);
+                }
             }
             call_notify(&self.on_state_change);
             Some(bat)
@@ -212,25 +236,31 @@ impl Tracker {
         }
     }
 
+    pub fn record_query_log_for_session(&self, dev: &str, session_id: i64, session_start: &str, action: impl Into<String>, details: impl Into<String>) {
+        let event_ts = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        let action = action.into();
+        let details = details.into();
+        db::insert_query_log(dev, session_id, session_start, &event_ts, &action, &details);
+    }
+
     pub fn record_query_log(&self, action: impl Into<String>, details: impl Into<String>) {
         let (session_id, session_start) = {
             let g = self.inner.lock();
             if let Some(s) = &g.session {
                 (
-                    Some(s.id),
-                    Some(s.start_dt.format("%Y-%m-%dT%H:%M:%S").to_string()),
+                    s.id,
+                    s.start_dt.format("%Y-%m-%dT%H:%M:%S").to_string(),
                 )
             } else {
-                (None, None)
+                (0, "".to_string())
             }
         };
 
-        let Some(session_id) = session_id else { return; };
-        let Some(session_start) = session_start else { return; };
         let event_ts = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let action = action.into();
         let details = details.into();
-        db::insert_query_log(session_id, &session_start, &event_ts, &action, &details);
+        let dev = self.get_device_name();
+        db::insert_query_log(&dev, session_id, &session_start, &event_ts, &action, &details);
     }
 
     pub fn get_query_log(&self) -> Vec<db::QueryLogRow> {
@@ -323,18 +353,27 @@ impl Tracker {
                     let bt_clone = Arc::clone(&tracker_conn.bt);
                     let on_change_clone = Arc::clone(&tracker_conn.on_state_change);
                     let tracker_clone = Arc::clone(&tracker_conn);
+                    let session_dev_name = current_dev.clone();
+                    let session_id = id;
+                    let session_start_str = now.format("%Y-%m-%dT%H:%M:%S").to_string();
                     std::thread::spawn(move || {
                         // Wait a short bit after connection to let SPP settle
                         std::thread::sleep(Duration::from_secs(2));
                         while bt_clone.is_connected() {
+                            if tracker_clone.get_device_name() != session_dev_name || tracker_clone.get_active_session_id() != Some(session_id) {
+                                break;
+                            }
                             let previous_bat = cache_clone.lock().clone();
                             let current_dev = tracker_clone.get_device_name();
                             let current_mac = tracker_clone.get_mac_address();
                             let current_brand = tracker_clone.get_brand();
                             let current_proto = tracker_clone.get_protocol_mode();
-                            tracker_clone.record_query_log(
+                            tracker_clone.record_query_log_for_session(
+                                &session_dev_name,
+                                session_id,
+                                &session_start_str,
                                 "Battery query sent",
-                                format!("Polling {}", current_dev),
+                                format!("Polling {}", session_dev_name),
                             );
                             let (bat_opt, effective_mode) = crate::spp::read_battery(
                                 &current_dev,
@@ -342,6 +381,10 @@ impl Tracker {
                                 &current_brand,
                                 &current_proto,
                             );
+                            // If device changed during query, abort immediately
+                            if tracker_clone.get_device_name() != session_dev_name || tracker_clone.get_active_session_id() != Some(session_id) {
+                                break;
+                            }
                             // First-try discovery: persist the working method to the profile
                             if current_proto == "auto" {
                                 tracker_clone.set_protocol_mode(effective_mode);
@@ -364,15 +407,26 @@ impl Tracker {
                                 bat.updated_at = Some(updated_at);
 
                                 info!("SPP Battery Poll: L={:?} R={:?} C={:?} updated_at={}", bat.left, bat.right, bat.case, updated_at);
-                                tracker_clone.record_query_log(
+                                let log_details = if bat.right.is_none() && bat.case.is_none() {
+                                    format!("Battery={:?}", bat.left)
+                                } else {
+                                    format!("L={:?} R={:?} C={:?}", bat.left, bat.right, bat.case)
+                                };
+                                tracker_clone.record_query_log_for_session(
+                                    &session_dev_name,
+                                    session_id,
+                                    &session_start_str,
                                     "Battery response received",
-                                    format!("L={:?} R={:?} C={:?}", bat.left, bat.right, bat.case),
+                                    log_details,
                                 );
                                 *cache_clone.lock() = Some(bat.clone());
-                                db::set_connect_battery(id, bat.left, bat.right, bat.case);
+                                db::set_connect_battery(session_id, bat.left, bat.right, bat.case);
                                 call_notify(&on_change_clone);
                             } else {
-                                tracker_clone.record_query_log(
+                                tracker_clone.record_query_log_for_session(
+                                    &session_dev_name,
+                                    session_id,
+                                    &session_start_str,
                                     "Battery query failed",
                                     "No battery response received",
                                 );
@@ -380,12 +434,17 @@ impl Tracker {
                             // Poll according to configured interval
                             let mut elapsed = 0;
                             while bt_clone.is_connected() && elapsed < tracker_clone.get_battery_interval_secs() {
+                                if tracker_clone.get_device_name() != session_dev_name || tracker_clone.get_active_session_id() != Some(session_id) {
+                                    break;
+                                }
                                 std::thread::sleep(Duration::from_secs(1));
                                 elapsed += 1;
                             }
                         }
-                        // Clear cache on disconnect
-                        *cache_clone.lock() = None;
+                        // Clear cache on disconnect only if it's still the same device
+                        if tracker_clone.get_device_name() == session_dev_name {
+                            *cache_clone.lock() = None;
+                        }
                     });
                 }
 
