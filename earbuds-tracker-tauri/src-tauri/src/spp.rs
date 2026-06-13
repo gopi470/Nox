@@ -160,7 +160,7 @@ fn find_device_mac(_device_name: &str) -> Option<u64> { None }
 /// Connect to the CMF Buds 2a via WinRT RFCOMM, send a battery request,
 /// collect the response, and return parsed battery levels.
 #[cfg(target_os = "windows")]
-pub fn read_battery(device_name: &str) -> Option<BatteryInfo> {
+fn read_battery_spp(device_name: &str) -> Option<BatteryInfo> {
     use windows::{
         Devices::Bluetooth::BluetoothDevice,
         Devices::Bluetooth::Rfcomm::RfcommServiceId,
@@ -307,6 +307,58 @@ pub fn read_battery(device_name: &str) -> Option<BatteryInfo> {
     let _ = socket.Close();
     warn!("SPP: no battery response. Raw received: {:02X?}", all_bytes);
     None
+}
+
+#[cfg(target_os = "windows")]
+fn read_battery_pnp(device_name: &str) -> Option<BatteryInfo> {
+    use std::os::windows::process::CommandExt;
+    let safe_name = device_name.replace('\'', "''");
+    let script = format!(
+        r#"$devs = Get-PnpDevice | Where-Object {{ $_.FriendlyName -like '*{safe_name}*' }};
+        foreach ($d in $devs) {{
+            $val = Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName "{{104EA319-6EE2-4701-BD47-8DDBF425BBE5}} 2" -ErrorAction SilentlyContinue;
+            if ($val -and $val.Data -ne $null) {{
+                $val.Data;
+                break;
+            }}
+        }}"#
+    );
+    let mut command = std::process::Command::new("powershell");
+    command.creation_flags(0x08000000);
+    let out = command
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+        .ok()?;
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let battery_pct = s.lines().next()?.trim().parse::<u8>().ok()?;
+    if battery_pct <= 100 {
+        Some(BatteryInfo {
+            left: Some(battery_pct),
+            left_charging: false,
+            right: None,
+            right_charging: false,
+            case: None,
+            case_charging: false,
+            updated_at: Some(chrono::Local::now().timestamp_millis() as u64),
+        })
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn read_battery(device_name: &str) -> Option<BatteryInfo> {
+    let name_upper = device_name.to_uppercase();
+    let is_nothing = name_upper.contains("CMF") || name_upper.contains("NOTHING");
+    
+    if is_nothing {
+        if let Some(info) = read_battery_spp(device_name) {
+            return Some(info);
+        }
+    }
+    
+    // Fallback to standard PnP / GATT BAS
+    read_battery_pnp(device_name)
 }
 
 #[cfg(not(target_os = "windows"))]

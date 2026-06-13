@@ -507,20 +507,49 @@ code {
   font-size: 13px;
   outline: none;
   transition: border-color 0.15s;
+  color-scheme: dark;
+}
+.input-field option {
+  background: var(--bg3);
+  color: var(--text);
+}
+.input-field option:disabled {
+  color: var(--muted);
+  background: var(--bg2);
 }
 .input-field:focus {
   border-color: var(--accent);
 }
-
-input[type="number"].input-field {
-  -moz-appearance: textfield;
-  appearance: textfield;
+.input-field:-webkit-autofill,
+.input-field:-webkit-autofill:hover, 
+.input-field:-webkit-autofill:focus, 
+.input-field:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--bg3) inset !important;
+  -webkit-text-fill-color: var(--text) !important;
+  transition: background-color 5000s ease-in-out 0s;
 }
 
+/* Hide ALL native spinners — custom ones are injected via JS */
 input[type="number"].input-field::-webkit-outer-spin-button,
-input[type="number"].input-field::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
+input[type="number"].input-field::-webkit-inner-spin-button,
+input[type="number"].input-field:hover::-webkit-outer-spin-button,
+input[type="number"].input-field:hover::-webkit-inner-spin-button,
+input[type="number"].input-field:focus::-webkit-outer-spin-button,
+input[type="number"].input-field:focus::-webkit-inner-spin-button,
+input[type="number"].input-field:active::-webkit-outer-spin-button,
+input[type="number"].input-field:active::-webkit-inner-spin-button {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  display: none !important;
+  width: 0 !important;
+  margin: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+input[type="number"].input-field {
+  -moz-appearance: textfield !important;
+  appearance: textfield !important;
 }
 
 input[type="number"].input-field {
@@ -528,15 +557,64 @@ input[type="number"].input-field {
   color: var(--text);
   font-family: inherit;
   letter-spacing: 0.2px;
+  padding-right: 28px; /* room for custom spinner */
 }
 
-input[type="number"].input-field::-webkit-inner-spin-button,
-input[type="number"].input-field::-webkit-outer-spin-button {
-  -webkit-appearance: auto;
-  appearance: auto;
-  opacity: 0.9;
-  filter: invert(1) saturate(0) brightness(1.4);
+/* Wrapper injected by JS around each number input */
+.num-input-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
 }
+
+.num-input-wrapper input[type="number"] {
+  width: 100%;
+}
+
+/* The column of two custom spinner buttons */
+.num-spin-btns {
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  bottom: 1px;
+  display: flex;
+  flex-direction: column;
+  width: 24px;
+  border-left: 1px solid var(--border);
+  border-radius: 0 5px 5px 0;
+  overflow: hidden;
+}
+
+.num-spin-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg3);
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  font-size: 9px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+  border: none;
+  padding: 0;
+}
+
+.num-spin-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--text);
+}
+
+.num-spin-btn:active {
+  background: rgba(255,255,255,0.18);
+  color: var(--accent);
+}
+
+.num-spin-btn + .num-spin-btn {
+  border-top: 1px solid var(--border);
+}
+
 
 .toggle-switch {
   position: relative;
@@ -790,6 +868,103 @@ body.font-ndot .bt-indicator-badge {
   100% { transform: scale(0.92); box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
 }
 
+
+/* Active Earbud Profile Switcher Dropup */
+.earbud-switcher-container {
+  position: relative;
+  display: inline-block;
+  user-select: none;
+}
+
+.switcher-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  height: 26px;
+  box-sizing: border-box;
+}
+
+.switcher-badge:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.05);
+}
+
+.switcher-icon {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.switcher-arrow {
+  font-size: 10px;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+
+.earbud-switcher-container.active .switcher-arrow {
+  transform: rotate(180deg);
+}
+
+.switcher-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: rgba(18, 18, 18, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 160px;
+  padding: 6px;
+  z-index: 1000;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.switcher-dropdown[hidden] {
+  display: none !important;
+}
+
+.switcher-item {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.switcher-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--fg);
+}
+
+.switcher-item.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.switcher-item.active::after {
+  content: "✓";
+  font-size: 10px;
+  color: var(--green);
+}
 
 /* ── Responsive breakpoints ───────────────────────────────────────────────── */
 @media (max-width: 850px) {

@@ -258,7 +258,8 @@ impl Tracker {
         self.bt.start(
             move || {
                 let now = Local::now().naive_local();
-                let id = db::open_session(&now);
+                let current_dev = dev_name_lock.read().clone();
+                let id = db::open_session(&now, &current_dev);
                 let mut g = inner_conn.lock();
                 let now_instant = Instant::now();
                 g.session = Some(Session {
@@ -271,7 +272,6 @@ impl Tracker {
                 });
                 info!("Session opened id={id}");
                 call_notify(&notify_conn);
-                let current_dev = dev_name_lock.read().clone();
                 schedule_live_write(Arc::clone(&inner_conn));
 
                 // Start background battery polling loop
@@ -380,10 +380,11 @@ impl Tracker {
         let week_start = today - chrono::Duration::days(today.weekday().num_days_from_monday() as i64);
         let month_start= today.with_day(1).unwrap_or(today);
 
-        let mut today_s = db::get_stats_for_range(&today, &today);
-        let mut week_s  = db::get_stats_for_range(&week_start, &today);
-        let mut month_s = db::get_stats_for_range(&month_start, &today);
-        let mut life_s  = db::get_lifetime_stats();
+        let dev = self.get_device_name();
+        let mut today_s = db::get_stats_for_range(&dev, &today, &today);
+        let mut week_s  = db::get_stats_for_range(&dev, &week_start, &today);
+        let mut month_s = db::get_stats_for_range(&dev, &month_start, &today);
+        let mut life_s  = db::get_lifetime_stats(&dev);
 
         // Add unsaved current session
         for s in [&mut today_s, &mut week_s, &mut month_s, &mut life_s] {
@@ -396,7 +397,7 @@ impl Tracker {
     }
 
     pub fn get_recent_sessions(&self) -> Vec<db::SessionRow> {
-        db::get_recent_sessions(200)
+        db::get_recent_sessions(&self.get_device_name(), 200)
     }
 
     pub fn reset_all(&self) {
