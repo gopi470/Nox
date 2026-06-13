@@ -340,9 +340,36 @@
                   <option value="radar">Radar Chart</option>
                 </select>
               </div>
+              <div class="filter-group" id="group-sessions-container">
+                <label for="graph-group">View Mode</label>
+                <select id="graph-group" class="filter-select">
+                  <option value="grouped" selected>Group Similar</option>
+                  <option value="raw">All Sessions</option>
+                </select>
+              </div>
+              <div class="filter-group" id="graph-pagination-container" style="display: none;">
+                <label>Graph Page</label>
+                <div class="pagination-control-row">
+                  <button id="graph-page-prev" class="pagination-btn" aria-label="Previous Page">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                  </button>
+                  <span id="graph-page-info" class="pagination-info">1 / 1</span>
+                  <button id="graph-page-next" class="pagination-btn" aria-label="Next Page">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </div>
             <div class="graph-wrapper">
               <div id="battery-graph-canvas" class="battery-graph-canvas"></div>
+              <div id="battery-graph-date-groups" class="battery-graph-date-groups"></div>
+              <div id="hover-guide-left" class="hover-guide-line"></div>
+              <div id="hover-guide-right" class="hover-guide-line"></div>
+              <div id="hover-guide-bg" class="hover-guide-bg"></div>
               <div id="graph-empty-state" class="graph-empty-state">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
                   stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.4;">
@@ -538,6 +565,19 @@
         <div class="card settings-card">
           <div class="settings-control-row">
             <div>
+              <div class="set-title">Font Style</div>
+              <div class="set-desc">Default keeps the current font theme. NDot applies the Nothing-style font where it
+                fits.</div>
+            </div>
+            <select id="font-style-select" class="input-field" style="width: 180px;">
+              <option value="default">Default</option>
+              <option value="ndot">NDot</option>
+            </select>
+          </div>
+        </div>
+        <div class="card settings-card">
+          <div class="settings-control-row">
+            <div>
               <div class="set-title">Desktop Notifications</div>
               <div class="set-desc">Show notification on connection/disconnection events.</div>
             </div>
@@ -593,19 +633,6 @@
         <div class="card settings-card">
           <div class="settings-control-row">
             <div>
-              <div class="set-title">Font Style</div>
-              <div class="set-desc">Default keeps the current font theme. NDot applies the Nothing-style font where it
-                fits.</div>
-            </div>
-            <select id="font-style-select" class="input-field" style="width: 180px;">
-              <option value="default">Default</option>
-              <option value="ndot">NDot</option>
-            </select>
-          </div>
-        </div>
-        <div class="card settings-card">
-          <div class="settings-control-row">
-            <div>
               <div class="set-title">Battery Drain Interval</div>
               <div class="set-desc">Matches the step size of earbud battery reporting (e.g. 5% jumps for CMF Buds 2a).
               </div>
@@ -615,6 +642,28 @@
               <option value="5" selected>5% (Recommended)</option>
               <option value="10">10%</option>
             </select>
+          </div>
+        </div>
+        <div class="card settings-card">
+          <div class="settings-control-row" style="flex-direction: column; align-items: stretch; gap: 16px;">
+            <div>
+              <div class="set-title">Graph Pagination</div>
+              <div class="set-desc">Set how many values the X-axis can hold before moving to a new page.</div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px;">
+              <div>
+                <div style="font-size: 13px; font-weight: 500; color: #fff;">Group Similar Limit</div>
+                <div style="font-size: 11px; color: #888898;">Max groups per page (5 - 15)</div>
+              </div>
+              <input type="number" id="setting-pagination-grouped" class="input-field" style="width: 100px; text-align: center;" min="5" max="15" value="12">
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 12px;">
+              <div>
+                <div style="font-size: 13px; font-weight: 500; color: #fff;">All Sessions Limit</div>
+                <div style="font-size: 11px; color: #888898;">Max sessions per page (5 - 24)</div>
+              </div>
+              <input type="number" id="setting-pagination-raw" class="input-field" style="width: 100px; text-align: center;" min="5" max="24" value="20">
+            </div>
           </div>
         </div>
         <div class="card settings-card">

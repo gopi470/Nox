@@ -142,6 +142,7 @@ const resetSuccessMsg = document.getElementById('reset-success-msg');
 const resetSuccessClose = document.getElementById('reset-success-close');
 const graphDurationSelect = document.getElementById('graph-duration');
 const graphDurationNote = document.getElementById('graph-duration-note');
+const graphGroupSelect = document.getElementById('graph-group');
 const queryLogBtn = document.getElementById('query-log-btn');
 const queryLogDialog = document.getElementById('query-log-dialog');
 const queryLogList = document.getElementById('query-log-list');
@@ -354,6 +355,73 @@ async function initBatteryStepSelect() {
 }
 
 initBatteryStepSelect();
+
+function initPaginationSettings() {
+  const groupedInput = document.getElementById('setting-pagination-grouped');
+  const rawInput = document.getElementById('setting-pagination-raw');
+
+  if (groupedInput) {
+    const saved = localStorage.getItem('pagination-limit-grouped');
+    if (saved) {
+      groupedInput.value = saved;
+    } else {
+      groupedInput.value = '12';
+      localStorage.setItem('pagination-limit-grouped', '12');
+    }
+
+    groupedInput.addEventListener('input', () => {
+      let val = parseInt(groupedInput.value, 10);
+      if (!isNaN(val) && val > 15) {
+        groupedInput.value = '15';
+      }
+    });
+
+    groupedInput.addEventListener('change', () => {
+      let val = parseInt(groupedInput.value, 10);
+      if (isNaN(val) || val < 5) {
+        val = 12;
+        groupedInput.value = '12';
+      } else if (val > 15) {
+        val = 15;
+        groupedInput.value = '15';
+      }
+      localStorage.setItem('pagination-limit-grouped', val.toString());
+      loadBatteryGraph();
+    });
+  }
+
+  if (rawInput) {
+    const saved = localStorage.getItem('pagination-limit-raw');
+    if (saved) {
+      rawInput.value = saved;
+    } else {
+      rawInput.value = '20';
+      localStorage.setItem('pagination-limit-raw', '20');
+    }
+
+    rawInput.addEventListener('input', () => {
+      let val = parseInt(rawInput.value, 10);
+      if (!isNaN(val) && val > 24) {
+        rawInput.value = '24';
+      }
+    });
+
+    rawInput.addEventListener('change', () => {
+      let val = parseInt(rawInput.value, 10);
+      if (isNaN(val) || val < 5) {
+        val = 20;
+        rawInput.value = '20';
+      } else if (val > 24) {
+        val = 24;
+        rawInput.value = '24';
+      }
+      localStorage.setItem('pagination-limit-raw', val.toString());
+      loadBatteryGraph();
+    });
+  }
+}
+
+initPaginationSettings();
 
 // The duration dropdown IS the toggle: "Never" turns auto backup off, any
 // other option turns it on with the matching interval.
@@ -896,6 +964,10 @@ function buildRadarBucketTooltipHtml(meta = {}) {
 function buildBatteryGraphTooltipHtml(pt, title = 'Session Details') {
   if (!pt) return '';
 
+  if (pt.isGrouped) {
+    title = `Grouped: ${pt.label} (${pt.rowCount} sessions)`;
+  }
+
   const startDate = pt.ts || pt.session_start ? new Date(pt.ts || pt.session_start) : null;
   const endDate = pt.session_end ? new Date(pt.session_end) : null;
   
@@ -929,12 +1001,17 @@ function buildBatteryGraphTooltipHtml(pt, title = 'Session Details') {
     return `${mins}m`;
   };
 
-  const startL = pt.left_start != null ? `${pt.left_start}%` : '—';
-  const endL = pt.left_end != null ? `${pt.left_end}%` : '—';
-  const startR = pt.right_start != null ? `${pt.right_start}%` : '—';
-  const endR = pt.right_end != null ? `${pt.right_end}%` : '—';
-  const startC = pt.case_start != null ? `${pt.case_start}%` : '—';
-  const endC = pt.case_end != null ? `${pt.case_end}%` : '—';
+  const formatPct = (val) => {
+    if (val == null) return '—';
+    return `${Math.round(val / 5) * 5}%`;
+  };
+
+  const startL = formatPct(pt.left_start);
+  const endL = formatPct(pt.left_end);
+  const startR = formatPct(pt.right_start);
+  const endR = formatPct(pt.right_end);
+  const startC = formatPct(pt.case_start);
+  const endC = formatPct(pt.case_end);
 
   return `
     <div class="chart-tooltip">
@@ -952,13 +1029,25 @@ function buildBatteryGraphTooltipHtml(pt, title = 'Session Details') {
 }
 
 function createXAxisFormatter(cats) {
+  const formatTimeTo12Hr = (timeStr) => {
+    if (!timeStr) return '';
+    const parts = timeStr.split(':');
+    if (parts.length < 2) return timeStr;
+    let hrs = parseInt(parts[0], 10);
+    const mins = parts[1];
+    const ampm = hrs >= 12 ? 'PM' : 'AM';
+    hrs = hrs % 12;
+    if (hrs === 0) hrs = 12;
+    return `${hrs}:${mins} ${ampm}`;
+  };
+
   return function(val) {
     if (!val) return '';
     const parts = val.split(' ');
     if (parts.length === 3) {
       const month = parts[0];
       const day = parts[1];
-      const time = parts[2];
+      const time = formatTimeTo12Hr(parts[2]);
       const idx = cats ? cats.indexOf(val) : -1;
       if (idx > 0 && cats[idx - 1]) {
         const prevParts = cats[idx - 1].split(' ');
@@ -2624,6 +2713,8 @@ document.querySelector('.nav-item[data-page="breakdown"]')
 // ── Battery Analytics Graph ──────────────────────────────────────────────────
 let batteryChart = null;
 let batteryGraphLoadToken = 0;
+let batteryGraphPageIndex = null;
+let batteryGraphTotalPages = 1;
 const graphTypeOptions = {
   line: 'Line Graph',
   area: 'Area Chart',
@@ -2662,6 +2753,19 @@ async function loadBatteryGraph() {
   const duration = document.getElementById('graph-duration')?.value || 'week';
   const item = document.getElementById('graph-item')?.value || 'all';
   let chartType = document.getElementById('graph-type')?.value || 'line';
+  let activeDateGroups = null;
+
+  const formatTimeTo12Hr = (timeStr) => {
+    if (!timeStr) return '';
+    const parts = timeStr.split(':');
+    if (parts.length < 2) return timeStr;
+    let hrs = parseInt(parts[0], 10);
+    const mins = parts[1];
+    const ampm = hrs >= 12 ? 'PM' : 'AM';
+    hrs = hrs % 12;
+    if (hrs === 0) hrs = 12;
+    return `${hrs}:${mins} ${ampm}`;
+  };
 
   syncGraphTypeOptions(item);
   const typeSelect = document.getElementById('graph-type');
@@ -2712,6 +2816,235 @@ async function loadBatteryGraph() {
     console.error('get_battery_graph_data failed', e);
   }
   if (loadToken !== batteryGraphLoadToken) return;
+
+  // Resolve missing battery values (fallback logic for abruptly closed sessions)
+  for (let i = 0; i < rawData.length; i++) {
+    const pt = rawData[i];
+    const prev = i > 0 ? rawData[i - 1] : null;
+
+    // Left Bud
+    if (pt.left_start == null) {
+      pt.left_start = pt.left_end ?? (prev ? (prev.left_end ?? prev.left_start) : null);
+    }
+    if (pt.left_end == null) {
+      pt.left_end = pt.left_start ?? (prev ? (prev.left_end ?? prev.left_start) : null);
+    }
+
+    // Right Bud
+    if (pt.right_start == null) {
+      pt.right_start = pt.right_end ?? (prev ? (prev.right_end ?? prev.right_start) : null);
+    }
+    if (pt.right_end == null) {
+      pt.right_end = pt.right_start ?? (prev ? (prev.right_end ?? prev.right_start) : null);
+    }
+
+    // Case
+    if (pt.case_start == null) {
+      pt.case_start = pt.case_end ?? (prev ? (prev.case_end ?? prev.case_start) : null);
+    }
+    if (pt.case_end == null) {
+      pt.case_end = pt.case_start ?? (prev ? (prev.case_end ?? prev.case_start) : null);
+    }
+
+    // If still null (e.g. no previous session data exists), fallback to default 100%
+    if (pt.left_start == null) pt.left_start = 100;
+    if (pt.left_end == null) pt.left_end = 100;
+    if (pt.right_start == null) pt.right_start = 100;
+    if (pt.right_end == null) pt.right_end = 100;
+    if (pt.case_start == null) pt.case_start = 100;
+    if (pt.case_end == null) pt.case_end = 100;
+  }
+
+  const viewMode = graphGroupSelect?.value || 'raw';
+  const isGroupingFeasible = duration !== 'session' && chartType !== 'pie' && chartType !== 'donut' && chartType !== 'radar';
+  
+  const groupContainer = document.getElementById('group-sessions-container');
+  if (groupContainer) {
+    groupContainer.style.display = isGroupingFeasible ? 'flex' : 'none';
+  }
+
+  if (viewMode === 'grouped' && isGroupingFeasible) {
+    const diff = (val1, val2) => {
+      if (val1 == null && val2 == null) return 0;
+      if (val1 == null || val2 == null) return 100;
+      return Math.abs(val1 - val2);
+    };
+
+    const isSimilar = (a, b, threshold = 5) => {
+      const lsDiff = diff(a.left_start, b.left_start);
+      const leDiff = diff(a.left_end, b.left_end);
+      const rsDiff = diff(a.right_start, b.right_start);
+      const reDiff = diff(a.right_end, b.right_end);
+      const csDiff = diff(a.case_start, b.case_start);
+      const ceDiff = diff(a.case_end, b.case_end);
+
+      return lsDiff <= threshold &&
+             leDiff <= threshold &&
+             rsDiff <= threshold &&
+             reDiff <= threshold &&
+             csDiff <= threshold &&
+             ceDiff <= threshold;
+    };
+
+    const mergeGroup = (group) => {
+      if (group.length === 1) return group[0];
+      const first = group[0];
+      const last = group[group.length - 1];
+      const avg = (key) => {
+        const vals = group.map(s => s[key]).filter(v => v != null);
+        if (!vals.length) return null;
+        return vals.reduce((sum, v) => sum + v, 0) / vals.length;
+      };
+      const sum = (key) => {
+        return group.reduce((sum, s) => sum + (s[key] ?? 0), 0);
+      };
+      return {
+        ...first,
+        session_start: first.session_start,
+        session_end: last.session_end,
+        left_start: avg('left_start'),
+        left_end: avg('left_end'),
+        right_start: avg('right_start'),
+        right_end: avg('right_end'),
+        case_start: avg('case_start'),
+        case_end: avg('case_end'),
+        connected_secs: sum('connected_secs'),
+        playback_secs: sum('playback_secs'),
+        label: first.label,
+        isGrouped: true,
+        rowCount: group.length,
+        groupLabels: {
+          start: first.label,
+          end: last.label
+        }
+      };
+    };
+
+    const groupedResult = [];
+    let currentGroup = [rawData[0]];
+
+    for (let i = 1; i < rawData.length; i++) {
+      const prev = currentGroup[0];
+      const next = rawData[i];
+      if (isSimilar(prev, next, 5)) {
+        currentGroup.push(next);
+      } else {
+        groupedResult.push(mergeGroup(currentGroup));
+        currentGroup = [next];
+      }
+    }
+    if (currentGroup.length > 0) {
+      groupedResult.push(mergeGroup(currentGroup));
+    }
+    rawData = groupedResult;
+  } else {
+    const groupContainer = document.getElementById('group-sessions-container');
+    if (groupContainer) {
+      groupContainer.style.display = isGroupingFeasible ? 'flex' : 'none';
+    }
+  }
+
+  // Handle pagination for X-axis: limit to 24 (or 15 for Group Similar) plot points per page without splitting dates
+  const isCartesian = chartType !== 'pie' && chartType !== 'donut' && chartType !== 'radar';
+  let totalPages = 1;
+
+  if (isCartesian && rawData.length > 0) {
+    const viewMode = document.getElementById('graph-group')?.value || 'raw';
+    const duration = document.getElementById('graph-duration')?.value || 'week';
+    const isGroupingFeasible = duration !== 'session' && chartType !== 'pie' && chartType !== 'donut' && chartType !== 'radar';
+    const isGrouped = viewMode === 'grouped' && isGroupingFeasible;
+
+    const groupedLimitSaved = localStorage.getItem('pagination-limit-grouped');
+    const rawLimitSaved = localStorage.getItem('pagination-limit-raw');
+    const groupedLimit = groupedLimitSaved ? parseInt(groupedLimitSaved, 10) : 12;
+    const rawLimit = rawLimitSaved ? parseInt(rawLimitSaved, 10) : 20;
+
+    const pageSize = isGrouped ? groupedLimit : rawLimit;
+
+    // 1. Group all sessions by date string
+    const dateGroupsList = [];
+    let lastDate = null;
+    let currentGroup = null;
+
+    for (const item of rawData) {
+      const labelStr = item.label; // "Jun 11 18:01"
+      const parts = labelStr.split(' ');
+      let dateStr = 'Date';
+      if (parts.length === 3) {
+        dateStr = `${parts[0]} ${parts[1]}`; // "Jun 11"
+      }
+
+      if (dateStr === lastDate) {
+        currentGroup.sessions.push(item);
+      } else {
+        currentGroup = { date: dateStr, sessions: [item] };
+        dateGroupsList.push(currentGroup);
+        lastDate = dateStr;
+      }
+    }
+
+    // 2. Bin-pack date groups into pages of max pageSize sessions
+    const pages = [];
+    let currentPage = [];
+    let currentPageSessionsCount = 0;
+
+    for (const group of dateGroupsList) {
+      const groupSize = group.sessions.length;
+      if (currentPageSessionsCount > 0 && currentPageSessionsCount + groupSize > pageSize) {
+        pages.push(currentPage);
+        currentPage = [];
+        currentPageSessionsCount = 0;
+      }
+      currentPage.push(group);
+      currentPageSessionsCount += groupSize;
+    }
+    if (currentPage.length > 0) {
+      pages.push(currentPage);
+    }
+
+    totalPages = pages.length;
+    batteryGraphTotalPages = totalPages;
+
+    if (batteryGraphPageIndex === null || batteryGraphPageIndex >= totalPages) {
+      batteryGraphPageIndex = totalPages - 1; // Default to the last page (most recent)
+    }
+    if (batteryGraphPageIndex < 0) {
+      batteryGraphPageIndex = 0;
+    }
+
+    // 3. Flatten the selected page's groups back into rawData
+    const selectedPageGroups = pages[batteryGraphPageIndex] || [];
+    rawData = selectedPageGroups.reduce((acc, g) => acc.concat(g.sessions), []);
+  } else {
+    batteryGraphTotalPages = 1;
+    batteryGraphPageIndex = 0;
+  }
+
+  // Update pagination UI controls
+  const paginator = document.getElementById('graph-pagination-container');
+  if (paginator) {
+    if (isCartesian && totalPages > 1) {
+      paginator.style.display = 'flex';
+      const infoSpan = document.getElementById('graph-page-info');
+      if (infoSpan) {
+        infoSpan.textContent = `${batteryGraphPageIndex + 1} / ${totalPages}`;
+      }
+      const prevBtn = document.getElementById('graph-page-prev');
+      const nextBtn = document.getElementById('graph-page-next');
+      if (prevBtn) {
+        prevBtn.disabled = batteryGraphPageIndex === 0;
+        prevBtn.style.opacity = batteryGraphPageIndex === 0 ? '0.3' : '1';
+        prevBtn.style.cursor = batteryGraphPageIndex === 0 ? 'not-allowed' : 'pointer';
+      }
+      if (nextBtn) {
+        nextBtn.disabled = batteryGraphPageIndex === totalPages - 1;
+        nextBtn.style.opacity = batteryGraphPageIndex === totalPages - 1 ? '0.3' : '1';
+        nextBtn.style.cursor = batteryGraphPageIndex === totalPages - 1 ? 'not-allowed' : 'pointer';
+      }
+    } else {
+      paginator.style.display = 'none';
+    }
+  }
 
   // Handle empty state
   if (!rawData || rawData.length === 0) {
@@ -3094,7 +3427,7 @@ async function loadBatteryGraph() {
       strokeDashArray: 4,
       xaxis: { lines: { show: false } },
       yaxis: { lines: { show: true } },
-      padding: { top: 10, right: 20, bottom: 0, left: 10 }
+      padding: { top: 10, right: 40, bottom: 0, left: 10 }
     },
     markers: {
       size: duration === 'session' ? 6 : (chartType === 'line' ? 4 : (chartType === 'area' ? 2 : 0)),
@@ -3197,16 +3530,52 @@ async function loadBatteryGraph() {
       labels: { colors: '#888898' }
     };
     options.series = series;
+    const formatTimeTo12Hr = (timeStr) => {
+      if (!timeStr) return '';
+      const parts = timeStr.split(':');
+      if (parts.length < 2) return timeStr;
+      let hrs = parseInt(parts[0], 10);
+      const mins = parts[1];
+      const ampm = hrs >= 12 ? 'PM' : 'AM';
+      hrs = hrs % 12;
+      if (hrs === 0) hrs = 12;
+      return `${hrs}:${mins} ${ampm}`;
+    };
+
+    const subCategories = [];
+    const dateGroups = [];
+    let currentGroup = null;
+    for (let i = 0; i < rawData.length; i++) {
+      const labelStr = rawData[i].label; // "Jun 11 18:01"
+      const parts = labelStr.split(' ');
+      let dateStr = 'Date';
+      let timeStr = labelStr;
+      if (parts.length === 3) {
+        dateStr = `${parts[0]} ${parts[1]}`; // "Jun 11"
+        timeStr = formatTimeTo12Hr(parts[2]); // "6:01 PM"
+      }
+      subCategories.push(timeStr);
+
+      if (currentGroup && currentGroup.date === dateStr) {
+        currentGroup.indices.push(i);
+      } else {
+        currentGroup = { date: dateStr, indices: [i] };
+        dateGroups.push(currentGroup);
+      }
+    }
+    activeDateGroups = dateGroups;
+
     options.xaxis = {
-      categories: categories,
+      type: 'category',
+      categories: subCategories,
       axisBorder: { show: false },
-      axisTicks: { show: false },
-      tickAmount: categories.length > 10 ? 10 : undefined,
+      axisTicks: { show: true },
       labels: {
         style: { colors: '#888898', fontSize: '11px' },
-        hideOverlappingLabels: true,
-        trim: true,
-        formatter: createXAxisFormatter(categories)
+        rotate: viewMode === 'grouped' ? 0 : -45,
+        rotateAlways: viewMode !== 'grouped',
+        hideOverlappingLabels: false,
+        trim: false
       }
     };
 
@@ -3420,15 +3789,117 @@ async function loadBatteryGraph() {
   requestAnimationFrame(() => {
     if (loadToken !== batteryGraphLoadToken) return;
     if (batteryChart) {
-      batteryChart.render().catch(console.error);
+      batteryChart.render().then(() => {
+        if (loadToken !== batteryGraphLoadToken) return;
+        renderDateGroupsHTML(rawData, activeDateGroups, chartType);
+      }).catch(console.error);
     }
   });
 }
 
+function renderDateGroupsHTML(rawData, dateGroups, chartType) {
+  const container = document.getElementById('battery-graph-date-groups');
+  if (!container) return;
+
+  container.innerHTML = '';
+  
+  // Hide guides on render/reset
+  const guideLeft = document.getElementById('hover-guide-left');
+  const guideRight = document.getElementById('hover-guide-right');
+  const guideBg = document.getElementById('hover-guide-bg');
+  if (guideLeft) guideLeft.style.display = 'none';
+  if (guideRight) guideRight.style.display = 'none';
+  if (guideBg) guideBg.style.display = 'none';
+
+  const isCartesian = chartType !== 'pie' && chartType !== 'donut' && chartType !== 'radar';
+  if (isCartesian && dateGroups && dateGroups.length > 0 && rawData && rawData.length > 0) {
+    container.style.display = 'flex';
+    
+    // Reduce vertical gap between times and brackets dynamically
+    const viewMode = document.getElementById('graph-group')?.value || 'raw';
+    const duration = document.getElementById('graph-duration')?.value || 'week';
+    const isGroupingFeasible = duration !== 'session' && chartType !== 'pie' && chartType !== 'donut' && chartType !== 'radar';
+    const isGrouped = viewMode === 'grouped' && isGroupingFeasible;
+    container.style.marginTop = isGrouped ? '-2px' : '-28px';
+
+    const totalSessions = rawData.length;
+    for (const group of dateGroups) {
+      const N = group.indices.length;
+      const widthPct = (N / totalSessions) * 100;
+
+      const bracket = document.createElement('div');
+      bracket.className = 'date-group-bracket';
+      bracket.style.width = `calc(${widthPct}% - 4px)`;
+
+      const label = document.createElement('div');
+      label.className = 'date-group-bracket-label';
+      label.textContent = group.date;
+
+      bracket.appendChild(label);
+
+      // Add interactive guide line rendering on hover
+      bracket.addEventListener('mouseenter', () => {
+        if (guideLeft && guideRight && guideBg) {
+          const leftPx = 48 + bracket.offsetLeft;
+          const widthPx = bracket.offsetWidth;
+
+          guideLeft.style.left = `${leftPx}px`;
+          guideLeft.style.display = 'block';
+
+          guideRight.style.left = `${leftPx + widthPx}px`;
+          guideRight.style.display = 'block';
+
+          guideBg.style.left = `${leftPx}px`;
+          guideBg.style.width = `${widthPx}px`;
+          guideBg.style.display = 'block';
+        }
+      });
+
+      bracket.addEventListener('mouseleave', () => {
+        if (guideLeft) guideLeft.style.display = 'none';
+        if (guideRight) guideRight.style.display = 'none';
+        if (guideBg) guideBg.style.display = 'none';
+      });
+
+      container.appendChild(bracket);
+    }
+  } else {
+    container.style.display = 'none';
+  }
+}
+
 // Wire up dropdown events
-document.getElementById('graph-duration')?.addEventListener('change', loadBatteryGraph);
-document.getElementById('graph-item')?.addEventListener('change', loadBatteryGraph);
-document.getElementById('graph-type')?.addEventListener('change', loadBatteryGraph);
+document.getElementById('graph-duration')?.addEventListener('change', () => {
+  batteryGraphPageIndex = null;
+  loadBatteryGraph();
+});
+document.getElementById('graph-item')?.addEventListener('change', () => {
+  batteryGraphPageIndex = null;
+  loadBatteryGraph();
+});
+document.getElementById('graph-type')?.addEventListener('change', () => {
+  batteryGraphPageIndex = null;
+  loadBatteryGraph();
+});
+document.getElementById('graph-group')?.addEventListener('change', () => {
+  batteryGraphPageIndex = null;
+  loadBatteryGraph();
+});
+
+// Wire up pagination events
+document.getElementById('graph-page-prev')?.addEventListener('click', () => {
+  if (batteryGraphPageIndex !== null && batteryGraphPageIndex > 0) {
+    batteryGraphPageIndex--;
+    loadBatteryGraph();
+  }
+});
+document.getElementById('graph-page-next')?.addEventListener('click', () => {
+  if (batteryGraphPageIndex !== null && batteryGraphPageIndex < batteryGraphTotalPages - 1) {
+    batteryGraphPageIndex++;
+    loadBatteryGraph();
+  }
+});
+
 document.getElementById('stats-week-prev')?.addEventListener('click', () => changeStatsWeek(1));
 document.getElementById('stats-week-next')?.addEventListener('click', () => changeStatsWeek(-1));
 

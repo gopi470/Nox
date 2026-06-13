@@ -1281,3 +1281,123 @@ body.font-ndot .analytics-title {
   overflow: visible !important;
 }
 
+/* Date Grouping Brackets Styles */
+.battery-graph-date-groups {
+  display: none;
+  margin-left: 48px;
+  margin-right: 40px;
+  height: 24px;
+  position: relative;
+  margin-top: 10px;
+}
+
+.date-group-bracket {
+  position: relative;
+  height: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  border-right: 1px solid rgba(255, 255, 255, 0.15);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  box-sizing: border-box;
+  margin-left: 2px;
+  margin-right: 2px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.date-group-bracket:hover {
+  border-color: var(--accent, #6366f1) !important;
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.date-group-bracket:hover .date-group-bracket-label {
+  color: var(--accent, #6366f1);
+}
+
+.date-group-bracket-label {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  color: #888898;
+  transition: color 0.2s ease;
+}
+
+.hover-guide-line {
+  position: absolute;
+  top: 45px;
+  bottom: 60px;
+  width: 1px;
+  border-left: 1px dashed rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+  display: none;
+  z-index: 10;
+}
+
+.hover-guide-bg {
+  position: absolute;
+  top: 45px;
+  bottom: 60px;
+  background: rgba(255, 255, 255, 0.035);
+  pointer-events: none;
+  display: none;
+  z-index: 5;
+}
+
+/* Premium Pagination Styles */
+.pagination-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg3, #15151b);
+  border: 1px solid var(--border, #33333f);
+  border-radius: 8px;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 2px;
+  min-width: 125px;
+  gap: 4px;
+}
+
+.pagination-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text, #ffffff);
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--accent, #6366f1);
+}
+
+.pagination-btn:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  font-size: 11px;
+  font-weight: 600;
+  color: #888898;
+  user-select: none;
+  font-family: inherit;
+  letter-spacing: 0.5px;
+  text-align: center;
+  flex-grow: 1;
+}
+
