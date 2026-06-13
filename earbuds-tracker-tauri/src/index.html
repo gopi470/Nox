@@ -99,9 +99,20 @@
 
       <!-- ── Dashboard Page ─────────────────────────────────────── -->
       <section class="page active" id="page-dashboard">
-        <div class="page-header">
-          <h1 class="page-title">Dashboard</h1>
-          <p class="page-sub" id="dashboard-sub">Real-time connection monitoring for CMF Buds 2a</p>
+        <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
+          <div style="display: flex; flex-direction: column; min-width: 0;">
+            <h1 class="page-title">Dashboard</h1>
+            <p class="page-sub" id="dashboard-sub" style="margin: 0;">Real-time connection monitoring for CMF Buds 2a</p>
+          </div>
+          <div id="bt-status-indicator" class="bt-indicator-badge bt-off">
+            <span class="bt-icon-wrapper">
+              <svg class="bt-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 7l10 10-5 5V2l5 5L7 17"></path>
+              </svg>
+            </span>
+            <span class="bt-status-text" id="bt-status-text">Bluetooth: Checking...</span>
+            <span class="bt-status-dot" id="bt-status-dot"></span>
+          </div>
         </div>
         <div class="dashboard-body">
           <!-- Ring card -->

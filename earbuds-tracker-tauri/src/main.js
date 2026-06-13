@@ -59,6 +59,7 @@ const invoke = (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.co
   }
   if (cmd === 'import_all_data') return true;
   if (cmd === 'get_app_version') return '1.0.0';
+  if (cmd === 'is_bluetooth_enabled') return true;
   if (cmd === 'get_auto_backup_settings') return { enabled: false, interval: 'never' };
   if (cmd === 'set_auto_backup_settings') return { enabled: !!args?.enabled, interval: args?.interval || 'never' };
   if (cmd === 'run_auto_backup') return { exported_at: new Date().toISOString(), auto_backup_path: '', download_path: '', sessions: 0, daily_stats: 0, app_audio_events: 0, query_logs: 0 };
@@ -1703,8 +1704,32 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
   }
 }
 
+// ── Bluetooth Radio State ──────────────────────────────────────────────────────
+async function updateBluetoothRadioStatus() {
+  const badge = document.getElementById('bt-status-indicator');
+  const label = document.getElementById('bt-status-text');
+  if (!badge || !label) return;
+
+  try {
+    const isEnabled = await invoke('is_bluetooth_enabled');
+    if (isEnabled) {
+      badge.classList.remove('bt-off');
+      badge.classList.add('bt-on');
+      label.textContent = 'Bluetooth On';
+    } else {
+      badge.classList.remove('bt-on');
+      badge.classList.add('bt-off');
+      label.textContent = 'Bluetooth Off';
+    }
+  } catch (e) {
+    console.error('is_bluetooth_enabled failed', e);
+  }
+}
+
 // ── Snapshot refresh ──────────────────────────────────────────────────────────
 async function refreshSnapshot() {
+  updateBluetoothRadioStatus();
+
   let snap;
   try {
     snap = await invoke('get_snapshot');

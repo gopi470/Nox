@@ -604,6 +604,31 @@ fn init_app_version_from_tauri_config() {
 }
 
 #[tauri::command]
+fn is_bluetooth_enabled() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Devices::Radios::{Radio, RadioKind, RadioState};
+        let Ok(radios) = Radio::GetRadiosAsync().and_then(|op| op.get()) else {
+            return false;
+        };
+        for radio in radios {
+            if let Ok(kind) = radio.Kind() {
+                if kind == RadioKind::Bluetooth {
+                    if let Ok(state) = radio.State() {
+                        return state == RadioState::On;
+                    }
+                }
+            }
+        }
+        false
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
+#[tauri::command]
 fn get_app_version() -> String {
     "1.0.0".to_string()
 }
@@ -1000,7 +1025,8 @@ pub fn run() {
             get_startup_enabled, set_startup_enabled,
             get_app_version, open_url,
             get_auto_backup_settings, set_auto_backup_settings, run_auto_backup,
-            get_autopause_enabled, set_autopause_enabled
+            get_autopause_enabled, set_autopause_enabled,
+            is_bluetooth_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

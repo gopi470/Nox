@@ -684,6 +684,112 @@ body.font-ndot .streak-label {
   100% { transform: scale(0.92); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
 }
 
+/* ── Bluetooth Status Badge ───────────────────────────────────────────────── */
+.bt-indicator-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: default;
+  margin-left: auto;
+  align-self: flex-start;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.bt-indicator-badge:hover {
+  transform: translateY(-1px);
+}
+
+.bt-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s ease;
+}
+
+.bt-svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* On/Enabled State */
+.bt-indicator-badge.bt-on {
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  color: #818cf8;
+}
+
+.bt-indicator-badge.bt-on:hover {
+  background: rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.25);
+}
+
+.bt-indicator-badge.bt-on .bt-icon-wrapper {
+  color: #818cf8;
+}
+
+.bt-indicator-badge.bt-on .bt-status-dot {
+  background-color: #818cf8;
+  box-shadow: 0 0 8px #818cf8;
+  animation: bt-pulse 2s infinite;
+}
+
+/* Off/Disabled State */
+.bt-indicator-badge.bt-off {
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+}
+
+.bt-indicator-badge.bt-off:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.15);
+}
+
+.bt-indicator-badge.bt-off .bt-icon-wrapper {
+  color: #fca5a5;
+}
+
+.bt-indicator-badge.bt-off .bt-status-dot {
+  background-color: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+}
+
+.bt-status-text {
+  font-family: inherit;
+  line-height: 1;
+}
+
+.bt-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+/* NDot font specific style adjustments */
+body.font-ndot .bt-indicator-badge {
+  font-family: 'NDot', monospace;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  word-spacing: 1.5px;
+  padding: 5px 12px;
+}
+
+@keyframes bt-pulse {
+  0% { transform: scale(0.92); box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.6); }
+  70% { transform: scale(1.08); box-shadow: 0 0 0 5px rgba(99, 102, 241, 0); }
+  100% { transform: scale(0.92); box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+}
+
 
 /* ── Responsive breakpoints ───────────────────────────────────────────────── */
 @media (max-width: 850px) {
