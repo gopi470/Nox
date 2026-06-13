@@ -26,14 +26,9 @@ This folder contains the Tauri (v2) desktop application codebase for **Nox**. It
 
 The frontend invokes several backend methods defined in `src-tauri/src/lib.rs`:
 
-* `get_snapshot` - Fetches state containing connections, active playing timers, and usage statistics.
-* `get_sessions` - Retreives a list of recent connected sessions.
-* `get_sessions_for_breakdown` - Returns metadata for the session directory.
-* `get_session_breakdown` - Retrieves application usage breakdown and battery levels for a specific session.
-* `set_session_note` - Writes a custom text note for a session.
-* `export_session` - Serializes session records into CSV/JSON format.
-* `get_battery_interval` / `set_battery_interval` - Gets or sets the custom battery query interval in seconds.
-* `set_device_name` - Sets the target Bluetooth device (saves to `target_device.txt`).
-* `get_paired_devices` - Queries Windows PnP for paired Bluetooth devices.
-* `verify_windows_password` - Authenticates user password using Windows Logon API for secure database wipes.
-* `reset_all` - Drops all table rows in the database to clear data.
+* **Telemetry & State**: `get_snapshot` (active connection & listening times), `get_device_battery` / `force_query_battery` (read cached or live battery status), `get_active_audio_apps` (processes active in WASAPI peak meter).
+* **Session Directory**: `get_sessions` (recent sessions), `get_sessions_for_breakdown` (session list metadata), `get_session_breakdown` (session detail view & app audio totals), `set_session_note` (save user note), `export_session` (serialize session to CSV/JSON).
+* **Analytics Data**: `get_daily_history` / `get_daily_history_bounds` (daily usage tracking), `get_battery_graph_data` (battery timeline points), `get_query_log` (underlying event logger).
+* **Backup & Migration**: `export_all_data` / `import_all_data` (database JSON import/export), `get_auto_backup_settings` / `set_auto_backup_settings` / `run_auto_backup` (scheduler control).
+* **System Settings**: `get_battery_interval` / `set_battery_interval` (polling rate), `get_battery_step` / `set_battery_step` (battery level delta step), `set_device_name` (write target to `settings.json`), `get_paired_devices` (discovery query), `get_startup_enabled` / `set_startup_enabled` (Tauri autostart configuration), `get_autopause_enabled` / `set_autopause_enabled` (pause-on-disconnect control).
+* **Authentication & Core**: `verify_windows_password` (Logon authentication for resets), `reset_all` (wipe database), `show_notification` (native toast delivery), `get_app_version` (version info), `is_debug` (runtime flag).

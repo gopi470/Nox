@@ -56,6 +56,8 @@ pub struct AppSettings {
     pub auto_backup_enabled: bool,
     #[serde(default = "default_auto_backup_interval")]
     pub auto_backup_interval: String,
+    #[serde(default = "default_autopause_enabled")]
+    pub autopause_enabled: bool,
 }
 
 fn default_battery_interval() -> u64 { 300 }
@@ -63,6 +65,7 @@ fn default_battery_step() -> u8 { 5 }
 fn default_target_device() -> String { "CMF Buds 2a".to_string() }
 fn default_desktop_notifications() -> bool { true }
 fn default_auto_backup_interval() -> String { "never".to_string() }
+fn default_autopause_enabled() -> bool { true }
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -74,6 +77,7 @@ impl Default for AppSettings {
             desktop_notifications: default_desktop_notifications(),
             auto_backup_enabled: false,
             auto_backup_interval: default_auto_backup_interval(),
+            autopause_enabled: default_autopause_enabled(),
         }
     }
 }
@@ -125,7 +129,7 @@ impl AutoBackupInterval {
     }
 }
 
-fn load_settings() -> AppSettings {
+pub(crate) fn load_settings() -> AppSettings {
     let path = settings_file();
     match std::fs::read_to_string(&path) {
         Ok(raw) => match serde_json::from_str::<AppSettings>(&raw) {
@@ -437,7 +441,10 @@ fn show_notification(app: AppHandle, title: String, body: String) {
                 return;
             };
 
-            let _ = notifier.Show(&toast);
+            if notifier.Show(&toast).is_ok() {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                let _ = notifier.Hide(&toast);
+            }
         });
     }
 }
@@ -535,6 +542,16 @@ fn force_query_battery(state: State<TrackerState>) -> Option<spp::BatteryInfo> {
 #[tauri::command]
 fn is_debug() -> bool {
     cfg!(debug_assertions)
+}
+
+#[tauri::command]
+fn get_autopause_enabled() -> bool {
+    load_settings().autopause_enabled
+}
+
+#[tauri::command]
+fn set_autopause_enabled(enabled: bool) {
+    update_settings(|s| s.autopause_enabled = enabled);
 }
 
 // ── Startup (autostart) commands ─────────────────────────────────────────────
@@ -977,7 +994,8 @@ pub fn run() {
             get_query_log, export_all_data, import_all_data,
             get_startup_enabled, set_startup_enabled,
             get_app_version,
-            get_auto_backup_settings, set_auto_backup_settings, run_auto_backup
+            get_auto_backup_settings, set_auto_backup_settings, run_auto_backup,
+            get_autopause_enabled, set_autopause_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

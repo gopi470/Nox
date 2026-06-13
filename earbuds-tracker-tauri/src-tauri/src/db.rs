@@ -785,15 +785,18 @@ pub fn get_session_breakdown(session_id: i64) -> Option<SessionBreakdown> {
 
 #[derive(serde::Serialize, Clone)]
 pub struct BatteryGraphPoint {
-    pub label:         String,
-    pub ts:            String,
-    pub left_start:    Option<i64>,
-    pub left_end:      Option<i64>,
-    pub right_start:   Option<i64>,
-    pub right_end:     Option<i64>,
-    pub case_start:    Option<i64>,
-    pub case_end:      Option<i64>,
-    pub duration_mins: f64,
+    pub label:          String,
+    pub ts:             String,
+    pub left_start:     Option<i64>,
+    pub left_end:       Option<i64>,
+    pub right_start:    Option<i64>,
+    pub right_end:      Option<i64>,
+    pub case_start:     Option<i64>,
+    pub case_end:       Option<i64>,
+    pub duration_mins:  f64,
+    pub session_end:    String,
+    pub connected_secs: f64,
+    pub playback_secs:  f64,
 }
 
 fn fmt_session_label(ts: &str) -> String {
@@ -824,7 +827,9 @@ pub fn get_battery_graph_data(duration: &str) -> Vec<BatteryGraphPoint> {
                     bat_right_connect, bat_right_disc,
                     bat_case_connect, bat_case_disc,
                     CAST((julianday(COALESCE(NULLIF(session_end,''),datetime('now')))
-                          - julianday(session_start)) * 1440.0 AS REAL)
+                          - julianday(session_start)) * 1440.0 AS REAL),
+                    connected_secs,
+                    playback_secs
              FROM sessions ORDER BY id DESC LIMIT 1",
         "day" =>
             "SELECT session_start, COALESCE(session_end,''),
@@ -832,7 +837,9 @@ pub fn get_battery_graph_data(duration: &str) -> Vec<BatteryGraphPoint> {
                     bat_right_connect, bat_right_disc,
                     bat_case_connect, bat_case_disc,
                     CAST((julianday(COALESCE(NULLIF(session_end,''),datetime('now')))
-                          - julianday(session_start)) * 1440.0 AS REAL)
+                          - julianday(session_start)) * 1440.0 AS REAL),
+                    connected_secs,
+                    playback_secs
              FROM sessions
              WHERE date(session_start) = date('now','localtime')
              ORDER BY id ASC",
@@ -842,7 +849,9 @@ pub fn get_battery_graph_data(duration: &str) -> Vec<BatteryGraphPoint> {
                     bat_right_connect, bat_right_disc,
                     bat_case_connect, bat_case_disc,
                     CAST((julianday(COALESCE(NULLIF(session_end,''),datetime('now')))
-                          - julianday(session_start)) * 1440.0 AS REAL)
+                          - julianday(session_start)) * 1440.0 AS REAL),
+                    connected_secs,
+                    playback_secs
              FROM sessions
              WHERE session_start >= datetime('now','-7 days')
              ORDER BY id ASC",
@@ -852,7 +861,9 @@ pub fn get_battery_graph_data(duration: &str) -> Vec<BatteryGraphPoint> {
                     bat_right_connect, bat_right_disc,
                     bat_case_connect, bat_case_disc,
                     CAST((julianday(COALESCE(NULLIF(session_end,''),datetime('now')))
-                          - julianday(session_start)) * 1440.0 AS REAL)
+                          - julianday(session_start)) * 1440.0 AS REAL),
+                    connected_secs,
+                    playback_secs
              FROM sessions
              WHERE session_start >= datetime('now','-30 days')
              ORDER BY id ASC",
@@ -864,6 +875,7 @@ pub fn get_battery_graph_data(duration: &str) -> Vec<BatteryGraphPoint> {
     };
     stmt.query_map([], |row| {
         let ts: String = row.get(0)?;
+        let session_end: String = row.get(1)?;
         let label = fmt_session_label(&ts);
         Ok(BatteryGraphPoint {
             label,
@@ -875,6 +887,9 @@ pub fn get_battery_graph_data(duration: &str) -> Vec<BatteryGraphPoint> {
             case_start:    row.get(6)?,
             case_end:      row.get(7)?,
             duration_mins: row.get::<_, Option<f64>>(8)?.unwrap_or(0.0),
+            session_end,
+            connected_secs: row.get::<_, Option<f64>>(9)?.unwrap_or(0.0),
+            playback_secs:  row.get::<_, Option<f64>>(10)?.unwrap_or(0.0),
         })
     })
     .unwrap()
