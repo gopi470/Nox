@@ -28,3 +28,7 @@ src-tauri/gen/
 *.njsproj
 *.sln
 *.sw?
+
+# Scratch/Helper scripts
+scratch/
+*.db

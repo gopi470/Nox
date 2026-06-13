@@ -38,6 +38,20 @@ fn settings_dir() -> std::path::PathBuf {
 fn settings_file() -> std::path::PathBuf {
     settings_dir().join("settings.json")
 }
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DeviceProfile {
+    pub friendly_name: String,
+    pub brand: String,
+    pub protocol_mode: String,
+    pub battery_interval: u64,
+    pub battery_step: u8,
+    /// Bluetooth hardware MAC address stored as a hex string (e.g. "AABBCCDDEEFF").
+    /// Saved when the user adds a profile from the paired-devices list.
+    /// `None` for profiles created before this feature or migrated from legacy installs.
+    #[serde(default)]
+    pub mac_address: Option<String>,
+}
+
 // Unified application settings, persisted in `settings.json` under the OS app-data dir.
 // Fields use `serde(default)` so older installs that are missing keys still load cleanly.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -58,6 +72,10 @@ pub struct AppSettings {
     pub auto_backup_interval: String,
     #[serde(default = "default_autopause_enabled")]
     pub autopause_enabled: bool,
+    #[serde(default = "default_device_profiles")]
+    pub device_profiles: Vec<DeviceProfile>,
+    #[serde(default = "default_active_device")]
+    pub active_device: String,
 }
 
 fn default_battery_interval() -> u64 { 300 }
@@ -66,6 +84,17 @@ fn default_target_device() -> String { "CMF Buds 2a".to_string() }
 fn default_desktop_notifications() -> bool { true }
 fn default_auto_backup_interval() -> String { "never".to_string() }
 fn default_autopause_enabled() -> bool { true }
+fn default_device_profiles() -> Vec<DeviceProfile> {
+    vec![DeviceProfile {
+        friendly_name: "CMF Buds 2a".to_string(),
+        brand: "Nothing".to_string(),
+        protocol_mode: "auto".to_string(),
+        battery_interval: 300,
+        battery_step: 5,
+        mac_address: None,
+    }]
+}
+fn default_active_device() -> String { "CMF Buds 2a".to_string() }
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -78,6 +107,8 @@ impl Default for AppSettings {
             auto_backup_enabled: false,
             auto_backup_interval: default_auto_backup_interval(),
             autopause_enabled: default_autopause_enabled(),
+            device_profiles: default_device_profiles(),
+            active_device: default_active_device(),
         }
     }
 }
@@ -131,7 +162,7 @@ impl AutoBackupInterval {
 
 pub(crate) fn load_settings() -> AppSettings {
     let path = settings_file();
-    match std::fs::read_to_string(&path) {
+    let mut settings = match std::fs::read_to_string(&path) {
         Ok(raw) => match serde_json::from_str::<AppSettings>(&raw) {
             Ok(s) => s,
             Err(err) => {
@@ -140,7 +171,26 @@ pub(crate) fn load_settings() -> AppSettings {
             }
         },
         Err(_) => AppSettings::default(),
+    };
+
+    if settings.device_profiles.is_empty() {
+        let name = settings.target_device.clone();
+        let brand = if name.to_uppercase().contains("CMF") || name.to_uppercase().contains("NOTHING") {
+            "nothing_cmf".to_string()
+        } else {
+            "generic_other".to_string()
+        };
+        settings.device_profiles = vec![DeviceProfile {
+            friendly_name: name.clone(),
+            brand,
+            protocol_mode: "auto".to_string(),
+            battery_interval: settings.battery_interval,
+            battery_step: settings.battery_step,
+            mac_address: None,
+        }];
+        settings.active_device = name;
     }
+    settings
 }
 
 fn save_settings_to_disk(settings: &AppSettings) {
@@ -275,13 +325,13 @@ fn reset_all(state: State<TrackerState>) {
 }
 
 #[tauri::command]
-fn get_daily_history(week_offset: i64) -> Vec<db::DailyStatsRow> {
-    db::get_daily_history(week_offset)
+fn get_daily_history(week_offset: i64, state: State<TrackerState>) -> Vec<db::DailyStatsRow> {
+    db::get_daily_history(&state.get_device_name(), week_offset)
 }
 
 #[tauri::command]
-fn get_daily_history_bounds() -> db::DailyHistoryBounds {
-    db::get_daily_history_bounds()
+fn get_daily_history_bounds(state: State<TrackerState>) -> db::DailyHistoryBounds {
+    db::get_daily_history_bounds(&state.get_device_name())
 }
 
 #[tauri::command]
@@ -403,10 +453,10 @@ struct AutoBackupResult {
 }
 
 #[tauri::command]
-fn import_all_data(data: String) -> bool {
+fn import_all_data(data: String, state: State<TrackerState>) -> bool {
     match serde_json::from_str::<db::BackupData>(&data) {
         Ok(backup) => {
-            db::import_backup(&backup);
+            db::import_backup(&backup, &state.get_device_name());
             true
         }
         Err(_) => false,
@@ -458,28 +508,56 @@ fn escape_xml_text(value: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PairedDevice {
+    pub name: String,
+    pub mac: String, // 12-char hex, e.g. "001A7DDA7111"
+}
+
 #[tauri::command]
-fn get_paired_devices() -> Vec<String> {
+async fn get_paired_devices() -> Vec<PairedDevice> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
+        // Output "FriendlyName|MAC" pairs so we capture both in one pass.
+        // The InstanceId for Bluetooth PnP devices contains DEV_<12-hex-char-MAC>.
+        let script = r#"
+Get-PnpDevice -Class Bluetooth |
+  Where-Object { $_.FriendlyName -notlike '*Enumerator*' -and
+                 $_.FriendlyName -notlike '*Intel*'      -and
+                 $_.FriendlyName -notlike '*RFCOMM*'     -and
+                 $_.FriendlyName -notlike '*Microsoft*'  -and
+                 $_.FriendlyName -notlike '*Transport*'  -and
+                 $_.FriendlyName -notlike '*Adapter*' } |
+  ForEach-Object {
+    $mac = ''
+    if ($_.InstanceId -match 'DEV_([0-9A-Fa-f]{12})') { $mac = $Matches[1] }
+    "$($_.FriendlyName)|$mac"
+  }
+"#;
         let mut command = std::process::Command::new("powershell");
         command.creation_flags(0x08000000);
         let output = command
-            .args([
-                "-NoProfile", "-NonInteractive", "-Command",
-                "Get-PnpDevice -Class Bluetooth | Where-Object FriendlyName -notlike '*Enumerator*' | Where-Object FriendlyName -notlike '*Intel*' | Where-Object FriendlyName -notlike '*RFCOMM*' | Where-Object FriendlyName -notlike '*Microsoft*' | Where-Object FriendlyName -notlike '*Transport*' | Where-Object FriendlyName -notlike '*Adapter*' | Select-Object -ExpandProperty FriendlyName"
-            ])
+            .args(["-NoProfile", "-NonInteractive", "-Command", script])
             .output();
-        
+
         if let Ok(out) = output {
             let s = String::from_utf8_lossy(&out.stdout);
-            let mut devices: Vec<String> = s.lines()
-                .map(|l| l.trim().to_string())
-                .filter(|l| !l.is_empty())
+            let mut seen = std::collections::HashSet::new();
+            let mut devices: Vec<PairedDevice> = s
+                .lines()
+                .filter_map(|l| {
+                    let l = l.trim();
+                    if l.is_empty() { return None; }
+                    let mut parts = l.splitn(2, '|');
+                    let name = parts.next()?.trim().to_string();
+                    let mac  = parts.next().unwrap_or("").trim().to_string();
+                    if name.is_empty() { return None; }
+                    Some(PairedDevice { name, mac })
+                })
+                .filter(|d| seen.insert(d.name.clone()))
                 .collect();
-            devices.sort();
-            devices.dedup();
+            devices.sort_by(|a, b| a.name.cmp(&b.name));
             devices
         } else {
             vec![]
@@ -519,7 +597,17 @@ fn verify_windows_password(password: String) -> bool {
             unsafe { let _ = CloseHandle(token); }
             true
         } else {
-            false
+            let err = unsafe { windows::Win32::Foundation::GetLastError() };
+            log::warn!("LogonUserW failed for user '{}' with error {:?}", username, err);
+            // 1327 = ERROR_ACCOUNT_RESTRICTION
+            // If logon fails with ERROR_ACCOUNT_RESTRICTION when password is empty,
+            // it means the account has a blank/empty password, but logon is restricted by policy.
+            if password.is_empty() && err.0 == 1327 {
+                log::info!("Bypassing verification: account has a blank/empty password");
+                true
+            } else {
+                false
+            }
         }
     }
     #[cfg(not(target_os = "windows"))]
@@ -535,8 +623,8 @@ fn get_device_battery(state: State<TrackerState>) -> Option<spp::BatteryInfo> {
 }
 
 #[tauri::command]
-fn force_query_battery(state: State<TrackerState>) -> Option<spp::BatteryInfo> {
-    state.force_query_battery()
+async fn force_query_battery(state: tauri::State<'_, TrackerState>) -> Result<Option<spp::BatteryInfo>, String> {
+    Ok(state.force_query_battery())
 }
 
 #[tauri::command]
@@ -604,6 +692,172 @@ fn init_app_version_from_tauri_config() {
 }
 
 #[tauri::command]
+fn get_device_profiles() -> (String, Vec<DeviceProfile>) {
+    let s = load_settings();
+    (s.active_device, s.device_profiles)
+}
+
+#[tauri::command]
+fn switch_active_profile(name: String, state: tauri::State<'_, TrackerState>) -> Result<DeviceProfile, String> {
+    let mut updated_profile: Option<DeviceProfile> = None;
+    let _s = update_settings(|s| {
+        if s.device_profiles.iter().any(|p| p.friendly_name == name) {
+            s.active_device = name.clone();
+            s.target_device = name.clone();
+            if let Some(p) = s.device_profiles.iter().find(|p| p.friendly_name == name) {
+                s.battery_interval = p.battery_interval;
+                s.battery_step = p.battery_step;
+                updated_profile = Some(p.clone());
+            }
+        }
+    });
+
+    if let Some(profile) = updated_profile {
+        // Reconfigure the running tracker instance
+        state.set_device_name(&profile.friendly_name);
+        state.set_mac_address(profile.mac_address.clone());
+        state.set_brand(&profile.brand);
+        state.set_protocol_mode(&profile.protocol_mode);
+        state.set_battery_interval_secs(profile.battery_interval);
+        state.set_battery_step(profile.battery_step);
+        Ok(profile)
+    } else {
+        Err("Profile not found".to_string())
+    }
+}
+
+#[tauri::command]
+fn save_device_profile(profile: DeviceProfile, state: tauri::State<'_, TrackerState>) -> Result<(), String> {
+    let name = profile.friendly_name.clone();
+    let mut is_active = false;
+    let _s = update_settings(|s| {
+        if let Some(idx) = s.device_profiles.iter().position(|p| p.friendly_name == name) {
+            s.device_profiles[idx] = profile.clone();
+        } else {
+            s.device_profiles.push(profile.clone());
+        }
+        if s.active_device == name {
+            s.target_device = name.clone();
+            s.battery_interval = profile.battery_interval;
+            s.battery_step = profile.battery_step;
+            is_active = true;
+        }
+    });
+
+    if is_active {
+        state.set_device_name(&profile.friendly_name);
+        state.set_mac_address(profile.mac_address.clone());
+        state.set_brand(&profile.brand);
+        state.set_protocol_mode(&profile.protocol_mode);
+        state.set_battery_interval_secs(profile.battery_interval);
+        state.set_battery_step(profile.battery_step);
+    }
+    Ok(())
+}
+
+/// Creates a brand-new profile. If a profile with the same `friendly_name` already exists
+/// (e.g. two physical "CMF Buds 2a" devices), the name is auto-suffixed to "(2)", "(3)", etc.
+/// Returns the actual name under which the profile was saved.
+#[tauri::command]
+fn create_device_profile(profile: DeviceProfile, _state: tauri::State<'_, TrackerState>) -> Result<String, String> {
+    let base_name = profile.friendly_name.trim().to_string();
+    let mut final_name = String::new();
+
+    let _s = update_settings(|s| {
+        // Collect all existing profile names
+        let existing_names: std::collections::HashSet<&str> =
+            s.device_profiles.iter().map(|p| p.friendly_name.as_str()).collect();
+
+        // Find an unused name: try base_name, then base_name (2), (3), ...
+        let candidate = if !existing_names.contains(base_name.as_str()) {
+            base_name.clone()
+        } else {
+            let mut n = 2u32;
+            loop {
+                let candidate = format!("{} ({})", base_name, n);
+                if !existing_names.contains(candidate.as_str()) {
+                    break candidate;
+                }
+                n += 1;
+            }
+        };
+
+        final_name = candidate.clone();
+        let mut new_profile = profile.clone();
+        new_profile.friendly_name = candidate;
+        s.device_profiles.push(new_profile);
+    });
+
+    Ok(final_name)
+}
+
+#[tauri::command]
+fn delete_device_profile(name: String, state: tauri::State<'_, TrackerState>) -> Result<(), String> {
+    let mut fallback_profile: Option<DeviceProfile> = None;
+    let mut active_was_deleted = false;
+
+    let _s = update_settings(|s| {
+        s.device_profiles.retain(|p| p.friendly_name != name);
+        if s.active_device == name {
+            active_was_deleted = true;
+            if let Some(first_p) = s.device_profiles.first() {
+                s.active_device = first_p.friendly_name.clone();
+                s.target_device = first_p.friendly_name.clone();
+                s.battery_interval = first_p.battery_interval;
+                s.battery_step = first_p.battery_step;
+                fallback_profile = Some(first_p.clone());
+            } else {
+                s.active_device = String::new();
+                s.target_device = String::new();
+                s.battery_interval = 300; // default 5m
+                s.battery_step = 5;       // default 5%
+            }
+        }
+    });
+
+    db::delete_profile_data(&name);
+
+    if active_was_deleted {
+        if let Some(profile) = fallback_profile {
+            state.set_device_name(&profile.friendly_name);
+            state.set_battery_interval_secs(profile.battery_interval);
+            state.set_battery_step(profile.battery_step);
+        } else {
+            state.set_device_name("");
+            state.set_battery_interval_secs(300);
+            state.set_battery_step(5);
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn is_bluetooth_enabled() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Devices::Radios::{Radio, RadioKind, RadioState};
+        let Ok(radios) = Radio::GetRadiosAsync().and_then(|op| op.get()) else {
+            return false;
+        };
+        for radio in radios {
+            if let Ok(kind) = radio.Kind() {
+                if kind == RadioKind::Bluetooth {
+                    if let Ok(state) = radio.State() {
+                        return state == RadioState::On;
+                    }
+                }
+            }
+        }
+        false
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
+#[tauri::command]
 fn get_app_version() -> String {
     "1.0.0".to_string()
 }
@@ -665,8 +919,8 @@ fn run_auto_backup() -> AutoBackupResult {
 // ── Session Breakdown commands ──────────────────────────────────────────────
 
 #[tauri::command]
-fn get_sessions_for_breakdown() -> Vec<db::SessionBreakdownRow> {
-    db::get_sessions_for_breakdown(200)
+fn get_sessions_for_breakdown(state: State<TrackerState>) -> Vec<db::SessionBreakdownRow> {
+    db::get_sessions_for_breakdown(Some(&state.get_device_name()), 200)
 }
 
 #[tauri::command]
@@ -680,8 +934,8 @@ fn set_session_note(session_id: i64, note: String) {
 }
 
 #[tauri::command]
-fn get_battery_graph_data(duration: String) -> Vec<db::BatteryGraphPoint> {
-    db::get_battery_graph_data(&duration)
+fn get_battery_graph_data(duration: String, state: State<TrackerState>) -> Vec<db::BatteryGraphPoint> {
+    db::get_battery_graph_data(&state.get_device_name(), &duration)
 }
 
 /// Returns a JSON or CSV string of the full session breakdown for client-side download.
@@ -777,7 +1031,9 @@ pub fn run() {
         }
     }
 
-    if !settings.target_device.trim().is_empty() {
+    if !settings.active_device.trim().is_empty() {
+        initial_device = settings.active_device.clone();
+    } else if !settings.target_device.trim().is_empty() {
         initial_device = settings.target_device.clone();
     }
     initial_interval = settings.battery_interval;
@@ -789,7 +1045,19 @@ pub fn run() {
         save_settings_to_disk(&settings);
     }
 
-    let tracker = Arc::new(Tracker::new(&initial_device, initial_interval, initial_step));
+    let initial_profile = settings
+        .device_profiles
+        .iter()
+        .find(|p| p.friendly_name == initial_device);
+    let initial_mac = initial_profile.and_then(|p| p.mac_address.clone());
+    let initial_brand = initial_profile
+        .map(|p| p.brand.clone())
+        .unwrap_or_else(|| "generic_other".to_string());
+    let initial_proto = initial_profile
+        .map(|p| p.protocol_mode.clone())
+        .unwrap_or_else(|| "auto".to_string());
+
+    let tracker = Arc::new(Tracker::new(&initial_device, initial_mac, &initial_brand, &initial_proto, initial_interval, initial_step));
 
     // Honour persisted "Enable on Startup" preference and reflect it in the OS registry.
     let initial_startup_enabled = read_startup_enabled_from_disk();
@@ -843,6 +1111,24 @@ pub fn run() {
             *tracker.on_state_change.lock() = Some(Box::new(move || {
                 let _ = notify_handle.emit("state-changed", ());
             }));
+
+            // Wire protocol discovery → persist the discovered mode back into settings.json
+            // so subsequent connections skip the SPP probe and go straight to the right method.
+            {
+                let tracker_ref = Arc::clone(&tracker);
+                *tracker.on_protocol_discovered.lock() = Some(Box::new(move |discovered: String| {
+                    let dev = tracker_ref.get_device_name();
+                    if dev.is_empty() { return; }
+                    update_settings(|s| {
+                        if let Some(p) = s.device_profiles.iter_mut().find(|p| p.friendly_name == dev) {
+                            if p.protocol_mode == "auto" {
+                                log::info!("Protocol discovered for '{}': {}", dev, discovered);
+                                p.protocol_mode = discovered.clone();
+                            }
+                        }
+                    });
+                }));
+            }
 
             // Start background monitors
             tracker.start(handle.clone());
@@ -1000,7 +1286,10 @@ pub fn run() {
             get_startup_enabled, set_startup_enabled,
             get_app_version, open_url,
             get_auto_backup_settings, set_auto_backup_settings, run_auto_backup,
-            get_autopause_enabled, set_autopause_enabled
+            get_autopause_enabled, set_autopause_enabled,
+            is_bluetooth_enabled,
+            get_device_profiles, switch_active_profile,
+            save_device_profile, delete_device_profile, create_device_profile
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

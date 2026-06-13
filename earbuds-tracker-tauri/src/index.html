@@ -99,9 +99,30 @@
 
       <!-- ── Dashboard Page ─────────────────────────────────────── -->
       <section class="page active" id="page-dashboard">
-        <div class="page-header">
-          <h1 class="page-title">Dashboard</h1>
-          <p class="page-sub" id="dashboard-sub">Real-time connection monitoring for CMF Buds 2a</p>
+        <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
+          <div style="display: flex; flex-direction: column; min-width: 0;">
+            <h1 class="page-title">Dashboard</h1>
+            <p class="page-sub" id="dashboard-sub" style="margin: 0;">Real-time connection monitoring for CMF Buds 2a</p>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center; margin-left: auto;">
+            <!-- Active Earbud Profile Indicator (Read-only) -->
+            <div class="earbud-switcher-container" id="earbud-switcher">
+              <div class="switcher-badge" id="active-earbud-badge" style="cursor: default; pointer-events: none; background: rgba(255, 255, 255, 0.05); border-color: var(--border); box-shadow: none;">
+                <span class="switcher-icon">🎧</span>
+                <span id="active-earbud-name">CMF Buds 2a</span>
+              </div>
+            </div>
+            
+            <div id="bt-status-indicator" class="bt-indicator-badge bt-off">
+              <span class="bt-icon-wrapper">
+                <svg class="bt-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M7 7l10 10-5 5V2l5 5L7 17"></path>
+                </svg>
+              </span>
+              <span class="bt-status-text" id="bt-status-text">Bluetooth: Checking...</span>
+              <span class="bt-status-dot" id="bt-status-dot"></span>
+            </div>
+          </div>
         </div>
         <div class="dashboard-body">
           <!-- Ring card -->
@@ -300,6 +321,23 @@
                   <span class="battery-device-val" id="bat-right-val">—</span>
                 </div>
               </div>
+
+              <!-- Universal Generic Device -->
+              <div class="battery-device-col" id="bat-universal-container" style="display: none;">
+                <div class="battery-universal-icon-wrapper" style="margin-bottom: 22px; color: var(--fg); opacity: 0.85; height: 110px; display: flex; align-items: center; justify-content: center;">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+                    <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+                  </svg>
+                </div>
+                <div class="battery-progress-track">
+                  <div class="battery-progress-fill" id="bat-universal-progress"></div>
+                </div>
+                <div class="battery-device-info">
+                  <span class="battery-device-lbl">BATTERY</span>
+                  <span class="battery-device-val" id="bat-universal-val">—</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -319,7 +357,7 @@
                   <option value="month">Month</option>
                 </select>
               </div>
-              <div class="filter-group">
+              <div class="filter-group" id="graph-item-container">
                 <label for="graph-item">Item</label>
                 <select id="graph-item" class="filter-select">
                   <option value="left">Left Bud</option>
@@ -530,9 +568,22 @@
 
       <!-- ── Settings Page ──────────────────────────────────────── -->
       <section class="page" id="page-settings">
-        <div class="page-header">
-          <h1 class="page-title">Settings</h1>
-          <p class="page-sub">Configure preferences and manage data</p>
+        <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
+          <div style="display: flex; flex-direction: column; min-width: 0;">
+            <h1 class="page-title">Settings</h1>
+            <p class="page-sub">Configure preferences and manage data</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-left: auto; align-self: flex-start; margin-top: 6px;">
+            <span style="font-size: 13px; font-weight: 700; color: var(--text); line-height: 1; user-select: none;">Active Profile:</span>
+            <div class="earbud-switcher-container" id="earbud-switcher-settings">
+              <div class="switcher-badge" id="active-earbud-badge-settings">
+                <span class="switcher-icon">🎧</span>
+                <span id="active-earbud-name-settings">CMF Buds 2a</span>
+                <span class="switcher-arrow">▾</span>
+              </div>
+              <div class="switcher-dropdown" id="switcher-dropdown-settings" hidden></div>
+            </div>
+          </div>
         </div>
         <div class="card settings-card">
           <div class="settings-control-row">
@@ -548,18 +599,16 @@
         <div class="card settings-card">
           <div class="settings-control-row" style="flex-wrap: wrap; gap: 12px;">
             <div>
-              <div class="set-title">Target Earbuds Name</div>
-              <div class="set-desc">Select from paired devices or specify a custom one.</div>
+              <div class="set-title">Manage Earbuds Profile</div>
+              <div class="set-desc">Configure vendor-specific protocol overrides, polling rates, and setup multiple earbud profiles.</div>
             </div>
-            <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end; min-width: 180px;">
-              <select id="device-name-select" class="input-field"
-                style="width: 180px; text-overflow: ellipsis; padding-right: 8px;">
-                <option value="CMF Buds 2a">CMF Buds 2a</option>
-                <option value="__custom__">Type Custom Name...</option>
-              </select>
-              <input type="text" id="device-name-input" class="input-field" style="width: 180px; display: none;"
-                placeholder="Enter custom name..." />
-            </div>
+            <button class="btn btn-icon-label" id="btn-open-device-setup" style="flex-shrink:0; white-space:nowrap; padding: 7px 14px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              Manage Profiles
+            </button>
           </div>
         </div>
         <div class="card settings-card">
@@ -755,6 +804,23 @@
           </div>
         </div>
         <div class="card settings-card">
+          <div class="settings-control-row">
+            <div>
+              <div class="set-title">Protocol Database</div>
+              <div class="set-desc">View all known vendor-specific Bluetooth SPP byte sequences that have been reverse-engineered by the open-source community.</div>
+            </div>
+            <button class="btn btn-secondary btn-icon-label" id="btn-protocol-db"
+              style="flex-shrink:0; white-space:nowrap; padding: 7px 14px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+              </svg>
+              View Database
+            </button>
+          </div>
+        </div>
+        <div class="card settings-card">
           <div>
             <div class="set-title">About Nox</div>
             <div class="set-desc">
@@ -770,10 +836,33 @@
     </main>
   </div>
 
+  <!-- Protocol Database Modal -->
+  <div class="dialog-overlay" id="protocol-db-dialog" hidden>
+    <div class="dialog-box" style="max-width:820px; width:95vw; max-height:88vh; overflow:hidden; display:flex; flex-direction:column;">
+      <div class="dialog-title" style="gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+          <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+          <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+        </svg>
+        Vendor Bluetooth Protocol Database
+      </div>
+      <div class="dialog-msg" style="margin-bottom:12px;">
+        Byte sequences reverse-engineered by the open-source community. These are the proprietary commands sent over SPP/RFCOMM to retrieve battery status from specific brands.
+      </div>
+      <div style="overflow-y:auto; flex:1; padding-right:4px;">
+        <div id="protocol-db-content"></div>
+      </div>
+      <div class="dialog-btns" style="margin-top:16px;">
+        <button class="btn" id="protocol-db-close">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Step 1: Reset confirm dialog -->
   <div class="dialog-overlay" id="dialog" hidden>
     <div class="dialog-box">
-      <div class="dialog-title">
+      <div class="dialog-title" id="confirm-dialog-title">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
           <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
@@ -782,7 +871,7 @@
         </svg>
         Reset All Data?
       </div>
-      <div class="dialog-msg">This will permanently delete all session history and statistics. You will need to verify
+      <div class="dialog-msg" id="confirm-dialog-msg">This will permanently delete all session history and statistics. You will need to verify
         your Windows password to proceed.</div>
       <div class="dialog-btns">
         <button class="btn" id="dialog-cancel">Cancel</button>
@@ -829,6 +918,26 @@
       <div class="dialog-msg" id="reset-success-msg"></div>
       <div class="dialog-btns">
         <button class="btn btn-primary" id="reset-success-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Switch Profile Warning Dialog -->
+  <div class="dialog-overlay" id="switch-profile-dialog" hidden>
+    <div class="dialog-box">
+      <div class="dialog-title" style="display:flex;align-items:center;gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        Active Session Running
+      </div>
+      <div class="dialog-msg" id="switch-profile-msg"></div>
+      <div class="dialog-btns">
+        <button class="btn" id="switch-profile-cancel">Stay on Current</button>
+        <button class="btn btn-danger" id="switch-profile-confirm">Switch Anyway</button>
       </div>
     </div>
   </div>
@@ -933,6 +1042,98 @@
       <div class="dialog-msg" id="import-success-msg"></div>
       <div class="dialog-btns">
         <button class="btn btn-primary" id="import-success-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Device Setup / Manage Profiles Dialog -->
+  <div class="dialog-overlay" id="device-setup-dialog" hidden>
+    <div class="dialog-box" style="max-width: 440px; width: 95%; position: relative; padding-top: 36px;">
+      <button class="dialog-close-x" id="device-setup-close" aria-label="Close dialog">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+      <div class="dialog-title" style="display:flex;align-items:center;justify-content:space-between;width:100%; padding-right: 20px;">
+        <span>🎧 Earbud Profiles</span>
+        <div style="display:flex;background:rgba(255,255,255,0.06);padding:2px;border-radius:6px;border:1px solid var(--border); margin-right: 14px;">
+          <button id="switch-tab-edit" style="font-size:11px;padding:4px 10px;border:0;background:var(--accent);color:#fff;border-radius:4px;cursor:pointer;font-weight:600;transition:all 0.2s;">View</button>
+          <button id="switch-tab-add" style="font-size:11px;padding:4px 10px;border:0;background:transparent;color:var(--muted);border-radius:4px;cursor:pointer;font-weight:600;transition:all 0.2s;">Add</button>
+          <button id="switch-tab-paired" style="font-size:11px;padding:4px 10px;border:0;background:transparent;color:var(--muted);border-radius:4px;cursor:pointer;font-weight:600;transition:all 0.2s;">Paired</button>
+        </div>
+      </div>
+      <div class="dialog-msg" style="text-align: left; margin-bottom: 15px; margin-top: 10px;">
+        
+        <!-- EDIT TAB CONTENT -->
+        <div id="tab-content-edit">
+          <div style="margin-bottom: 12px;">
+            <label style="display: block; font-size: 11px; color: var(--muted); margin-bottom: 6px; font-weight: 700; text-transform: uppercase;">Select Profile</label>
+            <select id="profile-select-dropdown" class="input-field" style="width: 100%;"></select>
+          </div>
+          
+          <div style="margin-bottom: 12px; opacity: 0.85;">
+            <label style="display: block; font-size: 11px; margin-bottom: 4px; font-weight: 600;">Bluetooth Device Name</label>
+            <input type="text" id="edit-profile-friendly-name" class="input-field" style="width: 100%; background: rgba(255,255,255,0.04); cursor: not-allowed;" readonly disabled>
+          </div>
+          
+          <div style="margin-bottom: 12px;">
+            <label style="display: block; font-size: 11px; margin-bottom: 4px; font-weight: 600;">Brand / Manufacturer</label>
+            <select id="edit-profile-brand" class="input-field" style="width: 100%; background: rgba(255,255,255,0.04); cursor: not-allowed;" disabled>
+              <!-- Populated dynamically from PROTOCOL_DB -->
+            </select>
+            <div id="edit-profile-proto-status" style="display:none; align-items:center; gap:6px; font-size:10px; margin-top:6px; padding:5px 8px; border-radius:6px; background:rgba(129,140,248,0.08); border:1px solid rgba(129,140,248,0.18);">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span id="edit-profile-proto-text" style="color:#a5b4fc;"></span>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 16px;">
+            <button class="btn btn-danger" id="btn-delete-profile" style="width: 100%; font-size: 11px; padding: 7px 12px;">Delete Profile</button>
+          </div>
+        </div>
+
+        <!-- ADD TAB CONTENT -->
+        <div id="tab-content-add" style="display: none;">
+          <div style="margin-bottom: 12px;">
+            <label style="display: block; font-size: 11px; margin-bottom: 4px; font-weight: 600;">Bluetooth Device Name</label>
+            <select id="add-profile-select-device" class="input-field" style="width: 100%; margin-bottom: 8px;">
+              <option value="">None Selected</option>
+            </select>
+          </div>
+          
+          <div style="margin-bottom: 12px;">
+            <label style="display: block; font-size: 11px; margin-bottom: 4px; font-weight: 600;">Brand / Manufacturer</label>
+            <select id="add-profile-brand" class="input-field" style="width: 100%;">
+              <!-- Populated dynamically from PROTOCOL_DB -->
+            </select>
+            <div id="add-profile-proto-hint" style="display:none; align-items:center; gap:6px; font-size:10px; margin-top:6px; padding:5px 8px; border-radius:6px; background:rgba(129,140,248,0.08); border:1px solid rgba(129,140,248,0.18);">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span id="add-profile-proto-text" style="color:#a5b4fc;"></span>
+            </div>
+          </div>
+
+          <button class="btn" id="btn-create-profile" style="width: 100%; font-size: 12px; padding: 8px 12px; margin-top: 16px;">Add Profile</button>
+        </div>
+
+        <!-- PAIRED DEVICES TAB CONTENT -->
+        <div id="tab-content-paired" style="display: none;">
+          <div style="margin-bottom: 12px;">
+            <label style="display: block; font-size: 11px; color: var(--muted); margin-bottom: 8px; font-weight: 700; text-transform: uppercase;">All Paired Bluetooth Devices</label>
+            <div id="paired-devices-list-container" style="display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto; padding-right:4px;">
+              <!-- Dynamically populated rows -->
+            </div>
+          </div>
+          <div style="display: flex; justify-content: flex-start; margin-top: 12px;">
+            <button class="btn" id="btn-refresh-paired" style="font-size: 10px; padding: 4px 8px; border-color: rgba(255,255,255,0.15); color: var(--muted); background: transparent; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+              <svg id="btn-refresh-paired-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+              Refresh List
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>

@@ -1,5 +1,5 @@
 // tracker.rs – Core session state machine (mirrors tracker.py)
-use chrono::{Local, NaiveDate, NaiveDateTime};
+use chrono::{Local, NaiveDateTime};
 use std::time::{SystemTime, UNIX_EPOCH};
 use log::info;
 use parking_lot::Mutex;
@@ -42,6 +42,9 @@ use parking_lot::RwLock;
 
 pub struct Tracker {
     device_name: Arc<RwLock<String>>,
+    mac_address: Arc<RwLock<Option<String>>>,
+    protocol_mode: Arc<RwLock<String>>,
+    brand: Arc<RwLock<String>>,
     battery_interval_secs: Arc<RwLock<u64>>,
     battery_step: Arc<RwLock<u8>>,
     bt: Arc<BluetoothMonitor>,
@@ -51,6 +54,8 @@ pub struct Tracker {
     pub battery_cache: Arc<Mutex<Option<crate::spp::BatteryInfo>>>,
     // Callback invoked on any state change (set by Tauri main)
     pub on_state_change: Arc<Mutex<Option<Box<dyn Fn() + Send + 'static>>>>,
+    // Callback invoked when first-try protocol discovery completes — arg is "proprietary" or "standard"
+    pub on_protocol_discovered: Arc<Mutex<Option<Box<dyn Fn(String) + Send + 'static>>>>,
 }
 
 fn round_to_step(val: u8, step: u8) -> u8 {
@@ -81,10 +86,13 @@ fn merge_battery_reading(
 }
 
 impl Tracker {
-    pub fn new(device_name: &str, battery_interval_secs: u64, battery_step: u8) -> Self {
+    pub fn new(device_name: &str, mac_address: Option<String>, brand: &str, protocol_mode: &str, battery_interval_secs: u64, battery_step: u8) -> Self {
         let dev_name = Arc::new(RwLock::new(device_name.to_string()));
         Self {
             device_name: dev_name.clone(),
+            mac_address: Arc::new(RwLock::new(mac_address)),
+            protocol_mode: Arc::new(RwLock::new(protocol_mode.to_string())),
+            brand: Arc::new(RwLock::new(brand.to_string())),
             battery_interval_secs: Arc::new(RwLock::new(battery_interval_secs)),
             battery_step: Arc::new(RwLock::new(battery_step)),
             bt: Arc::new(BluetoothMonitor::new(dev_name.clone())),
@@ -93,15 +101,50 @@ impl Tracker {
             inner: Arc::new(Mutex::new(Inner { session: None })),
             battery_cache: Arc::new(Mutex::new(None)),
             on_state_change: Arc::new(Mutex::new(None)),
+            on_protocol_discovered: Arc::new(Mutex::new(None)),
         }
     }
 
     pub fn set_device_name(&self, new_name: &str) {
-        *self.device_name.write() = new_name.to_string();
+        let old_name = self.get_device_name();
+        if old_name != new_name {
+            {
+                let mut g = self.inner.lock();
+                finalise_session(&mut g);
+            }
+            *self.battery_cache.lock() = None;
+            self.bt.reset_connection_state();
+            *self.device_name.write() = new_name.to_string();
+            call_notify(&self.on_state_change);
+        }
     }
 
     pub fn get_device_name(&self) -> String {
         self.device_name.read().clone()
+    }
+
+    pub fn set_mac_address(&self, new_mac: Option<String>) {
+        *self.mac_address.write() = new_mac;
+    }
+
+    pub fn get_mac_address(&self) -> Option<String> {
+        self.mac_address.read().clone()
+    }
+
+    pub fn set_protocol_mode(&self, new_mode: &str) {
+        *self.protocol_mode.write() = new_mode.to_string();
+    }
+
+    pub fn get_protocol_mode(&self) -> String {
+        self.protocol_mode.read().clone()
+    }
+
+    pub fn set_brand(&self, new_brand: &str) {
+        *self.brand.write() = new_brand.to_string();
+    }
+
+    pub fn get_brand(&self) -> String {
+        self.brand.read().clone()
     }
 
     pub fn get_active_session_id(&self) -> Option<i64> {
@@ -126,15 +169,33 @@ impl Tracker {
 
     pub fn force_query_battery(&self) -> Option<crate::spp::BatteryInfo> {
         let dev = self.get_device_name();
+        let mac = self.get_mac_address();
+        let brand = self.get_brand();
+        let protocol = self.get_protocol_mode();
         if dev.is_empty() {
             return None;
         }
+        let start_sess_id = self.get_active_session_id();
         self.record_query_log(
             "Battery query sent (Force)",
             format!("Polling {}", dev),
         );
         let previous_bat = self.battery_cache.lock().clone();
-        if let Some(mut bat) = crate::spp::read_battery(&dev) {
+        let (bat_opt, effective_mode) = crate::spp::read_battery(&dev, mac.as_deref(), &brand, &protocol);
+        
+        // If device changed during query, abort immediately without updating cache or DB
+        if self.get_device_name() != dev {
+            return None;
+        }
+
+        // If auto-discovery just ran, persist the discovered method
+        if protocol == "auto" {
+            self.set_protocol_mode(effective_mode);
+            if let Some(ref cb) = *self.on_protocol_discovered.lock() {
+                cb(effective_mode.to_string());
+            }
+        }
+        if let Some(mut bat) = bat_opt {
             bat = merge_battery_reading(previous_bat, bat);
             let step = self.get_battery_step();
             if step > 1 {
@@ -148,14 +209,21 @@ impl Tracker {
                 .as_millis() as u64;
             bat.updated_at = Some(updated_at);
 
+            let log_details = if bat.right.is_none() && bat.case.is_none() {
+                format!("Battery={:?}", bat.left)
+            } else {
+                format!("L={:?} R={:?} C={:?}", bat.left, bat.right, bat.case)
+            };
             self.record_query_log(
                 "Battery response received (Force)",
-                format!("L={:?} R={:?} C={:?}", bat.left, bat.right, bat.case),
+                log_details,
             );
 
             *self.battery_cache.lock() = Some(bat.clone());
             if let Some(sess_id) = self.get_active_session_id() {
-                db::set_connect_battery(sess_id, bat.left, bat.right, bat.case);
+                if Some(sess_id) == start_sess_id {
+                    db::set_connect_battery(sess_id, bat.left, bat.right, bat.case);
+                }
             }
             call_notify(&self.on_state_change);
             Some(bat)
@@ -168,29 +236,36 @@ impl Tracker {
         }
     }
 
+    pub fn record_query_log_for_session(&self, dev: &str, session_id: i64, session_start: &str, action: impl Into<String>, details: impl Into<String>) {
+        let event_ts = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        let action = action.into();
+        let details = details.into();
+        db::insert_query_log(dev, session_id, session_start, &event_ts, &action, &details);
+    }
+
     pub fn record_query_log(&self, action: impl Into<String>, details: impl Into<String>) {
         let (session_id, session_start) = {
             let g = self.inner.lock();
             if let Some(s) = &g.session {
                 (
-                    Some(s.id),
-                    Some(s.start_dt.format("%Y-%m-%dT%H:%M:%S").to_string()),
+                    s.id,
+                    s.start_dt.format("%Y-%m-%dT%H:%M:%S").to_string(),
                 )
             } else {
-                (None, None)
+                (0, "".to_string())
             }
         };
 
-        let Some(session_id) = session_id else { return; };
-        let Some(session_start) = session_start else { return; };
         let event_ts = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let action = action.into();
         let details = details.into();
-        db::insert_query_log(session_id, &session_start, &event_ts, &action, &details);
+        let dev = self.get_device_name();
+        db::insert_query_log(&dev, session_id, &session_start, &event_ts, &action, &details);
     }
 
     pub fn get_query_log(&self) -> Vec<db::QueryLogRow> {
-        db::get_query_log(200)
+        let dev = self.get_device_name();
+        db::get_query_log(&dev, 200)
     }
 
     pub fn start(self: &Arc<Self>, app_handle: tauri::AppHandle) {
@@ -248,17 +323,16 @@ impl Tracker {
         let inner_disc = Arc::clone(&self.inner);
         let notify_disc = Arc::clone(&self.on_state_change);
         let dev_name_lock      = Arc::clone(&self.device_name);
-        let dev_name_lock_disc = Arc::clone(&self.device_name);
 
         let app_handle_conn = app_handle.clone();
-        let app_handle_disc = app_handle.clone();
         let tracker_conn = Arc::clone(self);
         let tracker_disc = Arc::clone(self);
 
         self.bt.start(
             move || {
                 let now = Local::now().naive_local();
-                let id = db::open_session(&now);
+                let current_dev = dev_name_lock.read().clone();
+                let id = db::open_session(&now, &current_dev);
                 let mut g = inner_conn.lock();
                 let now_instant = Instant::now();
                 g.session = Some(Session {
@@ -271,26 +345,54 @@ impl Tracker {
                 });
                 info!("Session opened id={id}");
                 call_notify(&notify_conn);
-                let current_dev = dev_name_lock.read().clone();
                 schedule_live_write(Arc::clone(&inner_conn));
 
                 // Start background battery polling loop
                 {
-                    let dev_for_bat = current_dev.clone();
                     let cache_clone = Arc::clone(&tracker_conn.battery_cache);
                     let bt_clone = Arc::clone(&tracker_conn.bt);
                     let on_change_clone = Arc::clone(&tracker_conn.on_state_change);
                     let tracker_clone = Arc::clone(&tracker_conn);
+                    let session_dev_name = current_dev.clone();
+                    let session_id = id;
+                    let session_start_str = now.format("%Y-%m-%dT%H:%M:%S").to_string();
                     std::thread::spawn(move || {
                         // Wait a short bit after connection to let SPP settle
                         std::thread::sleep(Duration::from_secs(2));
                         while bt_clone.is_connected() {
+                            if tracker_clone.get_device_name() != session_dev_name || tracker_clone.get_active_session_id() != Some(session_id) {
+                                break;
+                            }
                             let previous_bat = cache_clone.lock().clone();
-                            tracker_clone.record_query_log(
+                            let current_dev = tracker_clone.get_device_name();
+                            let current_mac = tracker_clone.get_mac_address();
+                            let current_brand = tracker_clone.get_brand();
+                            let current_proto = tracker_clone.get_protocol_mode();
+                            tracker_clone.record_query_log_for_session(
+                                &session_dev_name,
+                                session_id,
+                                &session_start_str,
                                 "Battery query sent",
-                                format!("Polling {}", dev_for_bat),
+                                format!("Polling {}", session_dev_name),
                             );
-                            if let Some(mut bat) = crate::spp::read_battery(&dev_for_bat) {
+                            let (bat_opt, effective_mode) = crate::spp::read_battery(
+                                &current_dev,
+                                current_mac.as_deref(),
+                                &current_brand,
+                                &current_proto,
+                            );
+                            // If device changed during query, abort immediately
+                            if tracker_clone.get_device_name() != session_dev_name || tracker_clone.get_active_session_id() != Some(session_id) {
+                                break;
+                            }
+                            // First-try discovery: persist the working method to the profile
+                            if current_proto == "auto" {
+                                tracker_clone.set_protocol_mode(effective_mode);
+                                if let Some(ref cb) = *tracker_clone.on_protocol_discovered.lock() {
+                                    cb(effective_mode.to_string());
+                                }
+                            }
+                            if let Some(mut bat) = bat_opt {
                                 bat = merge_battery_reading(previous_bat, bat);
                                 let step = tracker_clone.get_battery_step();
                                 if step > 1 {
@@ -305,15 +407,26 @@ impl Tracker {
                                 bat.updated_at = Some(updated_at);
 
                                 info!("SPP Battery Poll: L={:?} R={:?} C={:?} updated_at={}", bat.left, bat.right, bat.case, updated_at);
-                                tracker_clone.record_query_log(
+                                let log_details = if bat.right.is_none() && bat.case.is_none() {
+                                    format!("Battery={:?}", bat.left)
+                                } else {
+                                    format!("L={:?} R={:?} C={:?}", bat.left, bat.right, bat.case)
+                                };
+                                tracker_clone.record_query_log_for_session(
+                                    &session_dev_name,
+                                    session_id,
+                                    &session_start_str,
                                     "Battery response received",
-                                    format!("L={:?} R={:?} C={:?}", bat.left, bat.right, bat.case),
+                                    log_details,
                                 );
                                 *cache_clone.lock() = Some(bat.clone());
-                                db::set_connect_battery(id, bat.left, bat.right, bat.case);
+                                db::set_connect_battery(session_id, bat.left, bat.right, bat.case);
                                 call_notify(&on_change_clone);
                             } else {
-                                tracker_clone.record_query_log(
+                                tracker_clone.record_query_log_for_session(
+                                    &session_dev_name,
+                                    session_id,
+                                    &session_start_str,
                                     "Battery query failed",
                                     "No battery response received",
                                 );
@@ -321,12 +434,17 @@ impl Tracker {
                             // Poll according to configured interval
                             let mut elapsed = 0;
                             while bt_clone.is_connected() && elapsed < tracker_clone.get_battery_interval_secs() {
+                                if tracker_clone.get_device_name() != session_dev_name || tracker_clone.get_active_session_id() != Some(session_id) {
+                                    break;
+                                }
                                 std::thread::sleep(Duration::from_secs(1));
                                 elapsed += 1;
                             }
                         }
-                        // Clear cache on disconnect
-                        *cache_clone.lock() = None;
+                        // Clear cache on disconnect only if it's still the same device
+                        if tracker_clone.get_device_name() == session_dev_name {
+                            *cache_clone.lock() = None;
+                        }
                     });
                 }
 
@@ -380,10 +498,11 @@ impl Tracker {
         let week_start = today - chrono::Duration::days(today.weekday().num_days_from_monday() as i64);
         let month_start= today.with_day(1).unwrap_or(today);
 
-        let mut today_s = db::get_stats_for_range(&today, &today);
-        let mut week_s  = db::get_stats_for_range(&week_start, &today);
-        let mut month_s = db::get_stats_for_range(&month_start, &today);
-        let mut life_s  = db::get_lifetime_stats();
+        let dev = self.get_device_name();
+        let mut today_s = db::get_stats_for_range(&dev, &today, &today);
+        let mut week_s  = db::get_stats_for_range(&dev, &week_start, &today);
+        let mut month_s = db::get_stats_for_range(&dev, &month_start, &today);
+        let mut life_s  = db::get_lifetime_stats(&dev);
 
         // Add unsaved current session
         for s in [&mut today_s, &mut week_s, &mut month_s, &mut life_s] {
@@ -396,7 +515,7 @@ impl Tracker {
     }
 
     pub fn get_recent_sessions(&self) -> Vec<db::SessionRow> {
-        db::get_recent_sessions(200)
+        db::get_recent_sessions(&self.get_device_name(), 200)
     }
 
     pub fn reset_all(&self) {

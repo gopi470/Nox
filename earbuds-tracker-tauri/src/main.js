@@ -1,5 +1,75 @@
 import { computeStreak } from './utils.js';
 // main.js – Nox frontend logic
+
+// ─── Protocol Database ─────────────────────────────────────────────────────
+const PROTOCOL_DB = [
+  {
+    key: 'nothing_cmf',
+    brand: 'Nothing / CMF',
+    models: 'CMF Buds 2a, Nothing Ear (2), Nothing Ear (a)',
+    transport: 'SPP / RFCOMM',
+    uuid: 'aeac4a03-dff5-498f-843a-34487cf133eb',
+    status: 'Implemented ✓',
+    statusClass: 'badge-implemented',
+    request: '55 60 01 07 C0 00 00 01 ED C0',
+    response: '55 60 01 01 E0 <len> 00 01 <N> [02 <L%>] [03 <R%>] [04 <C%>] <CRC>',
+    notes: 'CRC-16/IBM (poly 0xA001, init 0xFFFF). Bit 7 of each battery byte = charging flag. device_id: 0x02=Left, 0x03=Right, 0x04=Case.',
+    source: 'Reverse-engineered from ear-web companion app JS',
+  },
+  {
+    key: 'samsung_galaxy',
+    brand: 'Samsung Galaxy Buds',
+    models: 'Galaxy Buds+, Buds Pro, Buds2, Buds2 Pro, Buds3',
+    transport: 'SPP / RFCOMM',
+    uuid: '00001101-0000-1000-8000-00805f9b34fb (standard SPP)',
+    status: 'Implemented ✓',
+    statusClass: 'badge-implemented',
+    request: 'FD 0C 00 2F C1 00 F2',
+    response: 'FD <len> <seq> 2F <payload> <CRC16-CCITT>',
+    notes: 'Preamble: 0xFD. MSG_ID 0x2F = Status request. Response byte 4=Left%, byte 5=Right%, byte 15=Case%. Varies per model.',
+    source: 'GalaxyBudsClient (github.com/timschneeb/GalaxyBudsClient)',
+  },
+  {
+    key: 'sony',
+    brand: 'Sony WH / WF Series',
+    models: 'WH-1000XM4, WH-1000XM5, WF-1000XM4, WF-1000XM5',
+    transport: 'SPP / RFCOMM',
+    uuid: '96CC203E-5068-46ad-B32D-E316F5E069BA',
+    status: 'Implemented ✓',
+    statusClass: 'badge-implemented',
+    request: '0C 03 01 02 01 A4',
+    response: '0C 06 01 02 02 01 <bat%> <charging> <checksum>',
+    notes: 'Start byte: 0x0C. Category 0x02 = Status. Command 0x01 = Get Battery. Response byte 6 = battery %, byte 7 = charging (0/1).',
+    source: 'Community reverse-engineering via Android HCI snoop log analysis',
+  },
+  {
+    key: 'apple_airpods',
+    brand: 'Apple AirPods',
+    models: 'AirPods (all gen), AirPods Pro, AirPods Max',
+    transport: 'BLE Advertisement (no connection needed)',
+    uuid: 'N/A — passive BLE beacon sniffing (Company ID: 0x004C)',
+    status: 'Implemented ✓',
+    statusClass: 'badge-implemented',
+    request: 'N/A — passive listen only',
+    response: 'FF 4C 00 07 19 <type> <flags> <left_bat> <right_bat> <case_bat> <charging_mask> ...',
+    notes: 'Manufacturer data broadcast continuously. Battery = nibble × 10 → %. 0x0F = pod not in ear. Charging mask: bit0=L, bit1=R, bit2=Case.',
+    source: 'OpenPods (github.com/adolfintel/OpenPods), FuriousMAC research',
+  },
+  {
+    key: 'bose',
+    brand: 'Bose QuietComfort / Sport',
+    models: 'QC45, QC35 II, Sport Earbuds',
+    transport: 'SPP / RFCOMM (proprietary)',
+    uuid: '00000000-deca-fade-deca-deafdecacaff',
+    status: 'Implemented ✓',
+    statusClass: 'badge-implemented',
+    request: '01 09 02 00 (Bose MAPS protocol)',
+    response: '01 <seq> 04 00 <left%> <right%> <case%> ...',
+    notes: 'Uses the Bose MAPS (Mobile Audio Protocol Suite). Header: 0x01. Battery status command ID: 0x09.',
+    source: 'Community research via Bose app decompilation',
+  },
+];
+
 // Tauri v2 exposes invoke under window.__TAURI__.core, not window.__TAURI__ directly
 const invoke = (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) || (async (cmd, args) => {
   console.log(`[Mock Invoke] ${cmd}`, args);
@@ -59,6 +129,7 @@ const invoke = (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.co
   }
   if (cmd === 'import_all_data') return true;
   if (cmd === 'get_app_version') return '1.0.0';
+  if (cmd === 'is_bluetooth_enabled') return true;
   if (cmd === 'get_auto_backup_settings') return { enabled: false, interval: 'never' };
   if (cmd === 'set_auto_backup_settings') return { enabled: !!args?.enabled, interval: args?.interval || 'never' };
   if (cmd === 'run_auto_backup') return { exported_at: new Date().toISOString(), auto_backup_path: '', download_path: '', sessions: 0, daily_stats: 0, app_audio_events: 0, query_logs: 0 };
@@ -74,12 +145,12 @@ let currentGoal = (() => {
 let notificationsEnabled = localStorage.getItem('notifications-enabled') !== 'false';
 let startupEnabled = localStorage.getItem('startup-enabled') === 'true';
 let autopauseEnabled = localStorage.getItem('autopause-enabled') !== 'false';
-let currentDeviceName = localStorage.getItem('target-device') || 'CMF Buds 2a';
+let activeProfile = null;
+let deviceProfiles = [];
+let currentDeviceName = 'CMF Buds 2a';
 let fontStyle = localStorage.getItem('font-style') || 'default';
 let batteryPollIntervalSec = 10;
 
-// Send initial device name to backend
-invoke('set_device_name', { name: currentDeviceName }).catch(console.error);
 
 // State trackers for notifications & animations
 let wasConnected = null;
@@ -640,7 +711,6 @@ async function restoreSettingsFromBackup(settings = {}) {
 
   if (typeof settings.target_device === 'string' && settings.target_device.trim()) {
     currentDeviceName = settings.target_device.trim();
-    localStorage.setItem('target-device', currentDeviceName);
     const deviceSelect = document.getElementById('device-name-select');
     if (deviceSelect && deviceSelect.value !== currentDeviceName && [...deviceSelect.options].some(opt => opt.value === currentDeviceName)) {
       deviceSelect.value = currentDeviceName;
@@ -648,7 +718,6 @@ async function restoreSettingsFromBackup(settings = {}) {
     if (deviceNameInput) deviceNameInput.value = currentDeviceName;
     const dashboardSub = document.getElementById('dashboard-sub');
     if (dashboardSub) dashboardSub.textContent = `Real-time connection monitoring for ${currentDeviceName}`;
-    await invoke('set_device_name', { name: currentDeviceName }).catch(console.error);
   }
 
   if (typeof settings.font_style === 'string' && settings.font_style.trim()) {
@@ -691,6 +760,800 @@ async function restoreSettingsFromBackup(settings = {}) {
   updateDailyStatsAndChart();
 }
 
+async function loadDeviceProfiles() {
+  try {
+    const [active, profiles] = await invoke('get_device_profiles');
+    deviceProfiles = profiles;
+    activeProfile = profiles.find(p => p.friendly_name === active) || profiles[0];
+    currentDeviceName = activeProfile ? activeProfile.friendly_name : 'No Active Device';
+    
+    // Update active device UI elements (both dashboard and settings)
+    const activeNameEl = document.getElementById('active-earbud-name');
+    if (activeNameEl) {
+      activeNameEl.textContent = currentDeviceName;
+    }
+    const activeNameSettingsEl = document.getElementById('active-earbud-name-settings');
+    if (activeNameSettingsEl) {
+      activeNameSettingsEl.textContent = currentDeviceName;
+    }
+    const dashboardSub = document.getElementById('dashboard-sub');
+    if (dashboardSub) {
+      dashboardSub.textContent = `Real-time connection monitoring for ${currentDeviceName}`;
+    }
+    
+    // Render dropdown list
+    renderSwitcherDropdown();
+    
+    // Update layout based on protocol mode
+    updateBatteryCardLayout();
+  } catch (err) {
+    console.error("Failed to load device profiles", err);
+  }
+}
+
+function updateBatteryCardLayout() {
+  const isUnified = activeProfile && (activeProfile.protocol_mode === 'standard' || activeProfile.brand === 'generic_other');
+  
+  const leftCol = document.getElementById('bat-left-container');
+  const caseCol = document.getElementById('bat-case-container');
+  const rightCol = document.getElementById('bat-right-container');
+  const univCol = document.getElementById('bat-universal-container');
+  
+  if (isUnified) {
+    if (leftCol) leftCol.style.display = 'none';
+    if (caseCol) caseCol.style.display = 'none';
+    if (rightCol) rightCol.style.display = 'none';
+    if (univCol) univCol.style.display = 'flex';
+  } else {
+    if (leftCol) leftCol.style.display = 'flex';
+    if (caseCol) caseCol.style.display = 'flex';
+    if (rightCol) rightCol.style.display = 'flex';
+    if (univCol) univCol.style.display = 'none';
+  }
+}
+
+function renderSwitcherDropdown() {
+  // Settings switcher
+  const dropdownSettings = document.getElementById('switcher-dropdown-settings');
+  if (dropdownSettings) {
+    dropdownSettings.innerHTML = '';
+    deviceProfiles.forEach(p => {
+      const item = document.createElement('div');
+      item.className = 'switcher-item' + (p.friendly_name === currentDeviceName ? ' active' : '');
+      item.textContent = p.friendly_name;
+      item.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        dropdownSettings.hidden = true;
+        const switcherEl = document.getElementById('earbud-switcher-settings');
+        if (switcherEl) switcherEl.classList.remove('active');
+        await selectActiveProfile(p.friendly_name);
+      });
+      dropdownSettings.appendChild(item);
+    });
+  }
+}
+
+function refreshActivePage() {
+  if (document.getElementById('page-history')?.classList.contains('active')) {
+    loadHistory();
+  }
+  if (document.getElementById('page-statistics')?.classList.contains('active')) {
+    updateDailyStatsAndChart();
+  }
+  if (document.getElementById('page-battery')?.classList.contains('active')) {
+    loadBatteryGraph();
+  }
+  if (document.getElementById('page-breakdown')?.classList.contains('active')) {
+    bdLoadSessions();
+  }
+}
+
+function showSwitchProfileWarning(name) {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('switch-profile-dialog');
+    const msg = document.getElementById('switch-profile-msg');
+    const cancelBtn = document.getElementById('switch-profile-cancel');
+    const confirmBtn = document.getElementById('switch-profile-confirm');
+    
+    if (!dialog || !msg || !cancelBtn || !confirmBtn) {
+      resolve(confirm(`An active tracking session is currently running for "${currentDeviceName}". Switching profiles will end the current session. Do you want to continue?`));
+      return;
+    }
+    
+    msg.textContent = `An active tracking session is currently running for "${currentDeviceName}". Switching profiles will end the current session. Do you want to continue?`;
+    
+    const cleanup = (result) => {
+      dialog.hidden = true;
+      cancelBtn.removeEventListener('click', onCancel);
+      confirmBtn.removeEventListener('click', onConfirm);
+      window.removeEventListener('keydown', onKeyDown);
+      resolve(result);
+    };
+    
+    const onCancel = () => cleanup(false);
+    const onConfirm = () => cleanup(true);
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onCancel();
+      }
+    };
+    
+    cancelBtn.addEventListener('click', onCancel);
+    confirmBtn.addEventListener('click', onConfirm);
+    window.addEventListener('keydown', onKeyDown);
+    
+    dialog.hidden = false;
+  });
+}
+
+async function selectActiveProfile(name) {
+  if (name === currentDeviceName) return;
+  if (lastConnected) {
+    const confirmed = await showSwitchProfileWarning(name);
+    if (!confirmed) {
+      return;
+    }
+  }
+  try {
+    const profile = await invoke('switch_active_profile', { name });
+    activeProfile = profile;
+    currentDeviceName = name;
+    
+    // Update active earbud name badge (both dashboard and settings)
+    const nameEl = document.getElementById('active-earbud-name');
+    if (nameEl) nameEl.textContent = name;
+    
+    const nameSettingsEl = document.getElementById('active-earbud-name-settings');
+    if (nameSettingsEl) nameSettingsEl.textContent = name;
+    
+    // Update sub title on dashboard
+    const subEl = document.getElementById('dashboard-sub');
+    if (subEl) subEl.textContent = `Real-time connection monitoring for ${name}`;
+    
+    // Rerender dropdown active state
+    renderSwitcherDropdown();
+    
+    // Update battery card layout and values
+    updateBatteryCardLayout();
+    
+    // Trigger instant battery check or clear previous UI cache
+    localStorage.removeItem('last-battery-info');
+    updateBatteryUI(null);
+    
+    // Force poll battery immediately
+    invoke('force_query_battery').then(batteryInfo => {
+      if (batteryInfo) {
+        updateBatteryUI(batteryInfo);
+      }
+    }).catch(console.error);
+
+    // Reset per-profile stats caches so the new profile's data is fetched fresh
+    statsHistoryBoundsPromise = null;
+    statsWeekOffset = 0;
+    statsMaxWeekOffset = null;
+
+    // Refresh active profile-specific data immediately
+    await refreshSnapshot();
+    refreshActivePage();
+
+  } catch (err) {
+    console.error("Failed to switch active profile", err);
+  }
+}
+
+// Setup Switcher Badge Toggling (Settings Only - Dashboard is Read-only)
+const switcherBadgeSettings = document.getElementById('active-earbud-badge-settings');
+if (switcherBadgeSettings) {
+  switcherBadgeSettings.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const dropdown = document.getElementById('switcher-dropdown-settings');
+    const container = document.getElementById('earbud-switcher-settings');
+    
+    if (dropdown) {
+      dropdown.hidden = !dropdown.hidden;
+      if (container) container.classList.toggle('active', !dropdown.hidden);
+    }
+  });
+}
+
+document.addEventListener('click', () => {
+  const dropdownSettings = document.getElementById('switcher-dropdown-settings');
+  const containerSettings = document.getElementById('earbud-switcher-settings');
+  if (dropdownSettings) {
+    dropdownSettings.hidden = true;
+    if (containerSettings) containerSettings.classList.remove('active');
+  }
+});
+
+// Dialog event handlers
+const setupDialog = document.getElementById('device-setup-dialog');
+const btnOpenSetup = document.getElementById('btn-open-device-setup');
+const btnCloseSetup = document.getElementById('device-setup-close');
+
+// Tab Switching logic
+const switchTabEdit = document.getElementById('switch-tab-edit');
+const switchTabAdd = document.getElementById('switch-tab-add');
+const switchTabPaired = document.getElementById('switch-tab-paired');
+const tabContentEdit = document.getElementById('tab-content-edit');
+const tabContentAdd = document.getElementById('tab-content-add');
+const tabContentPaired = document.getElementById('tab-content-paired');
+
+function setActiveTab(tab) {
+  const tabs = [switchTabEdit, switchTabAdd, switchTabPaired];
+  const contents = [tabContentEdit, tabContentAdd, tabContentPaired];
+  
+  tabs.forEach(t => {
+    if (t) {
+      if (t === tab) {
+        t.style.background = 'var(--accent)';
+        t.style.color = '#fff';
+      } else {
+        t.style.background = 'transparent';
+        t.style.color = 'var(--muted)';
+      }
+    }
+  });
+  
+  contents.forEach(c => {
+    if (c) {
+      if (c === tabContentEdit && tab === switchTabEdit) c.style.display = 'block';
+      else if (c === tabContentAdd && tab === switchTabAdd) c.style.display = 'block';
+      else if (c === tabContentPaired && tab === switchTabPaired) c.style.display = 'block';
+      else c.style.display = 'none';
+    }
+  });
+}
+
+if (switchTabEdit && switchTabAdd && switchTabPaired) {
+  switchTabEdit.addEventListener('click', () => {
+    setActiveTab(switchTabEdit);
+  });
+  switchTabAdd.addEventListener('click', () => {
+    setActiveTab(switchTabAdd);
+    resetProfileForm();
+  });
+  switchTabPaired.addEventListener('click', () => {
+    setActiveTab(switchTabPaired);
+  });
+}
+
+// Audio device heuristic filter
+function isTargetEarbudDevice(name) {
+  if (!name) return false;
+  const n = name.toLowerCase();
+  
+  const blacklist = [
+    'mouse', 'keyboard', 'keychron', 'mx master', 'pointer', 
+    'speaker', 'tv', 'display', 'desktop', 'controller', 
+    'gamepad', 'intel', 'microsoft', 'enumerator', 'rfcomm',
+    'adapter', 'dongle', 'hands-free', 'lep_p', 'spp', 'uuid',
+    'realtek', 'atheros', 'broadcom'
+  ];
+  if (blacklist.some(word => n.includes(word))) {
+    return false;
+  }
+  
+  const whitelist = [
+    'bud', 'ear', 'headphone', 'headset', 'audio', 'phone', 
+    'sound', 'wh-', 'wf-', 'airpod', 'nothing', 'cmf', 'tws'
+  ];
+  return whitelist.some(word => n.includes(word));
+}
+
+function renderPairedDevicesList(paired) {
+  const pairedContainer = document.getElementById('paired-devices-list-container');
+  if (!pairedContainer) return;
+  pairedContainer.innerHTML = '';
+
+  const displayList = paired;
+  if (displayList.length === 0) {
+    pairedContainer.innerHTML = `<div style="font-size:11px;color:var(--muted);text-align:center;padding:20px;">No paired Bluetooth devices found.</div>`;
+  } else {
+    displayList.forEach(dev => {
+      // dev is now { name, mac } from the backend
+      const devName = dev.name || dev; // backward compat guard
+      const devMac  = dev.mac  || '';
+      const isRecognized = isTargetEarbudDevice(devName);
+
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.justifyContent = 'space-between';
+      row.style.alignItems = 'center';
+      row.style.background = 'rgba(255,255,255,0.03)';
+      row.style.border = `1px solid ${isRecognized ? 'var(--border)' : 'rgba(255,255,255,0.07)'}`;
+      row.style.padding = '8px 12px';
+      row.style.borderRadius = '6px';
+      
+      // Left side: name + optional MAC badge
+      const leftWrap = document.createElement('div');
+      leftWrap.style.display = 'flex';
+      leftWrap.style.alignItems = 'center';
+      leftWrap.style.gap = '6px';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.style.fontSize = '12px';
+      nameSpan.style.fontWeight = '600';
+      nameSpan.style.color = isRecognized ? 'var(--text)' : 'var(--muted)';
+      nameSpan.textContent = devName;
+
+      leftWrap.appendChild(nameSpan);
+
+      // Show a tiny MAC badge so users can distinguish two same-named devices
+      if (devMac) {
+        const macBadge = document.createElement('span');
+        const fmt = devMac.match(/.{2}/g)?.join(':') || devMac;
+        macBadge.textContent = fmt;
+        macBadge.title = 'Bluetooth MAC address — uniquely identifies this physical device';
+        macBadge.style.cssText = `
+          font-size: 9px; font-weight: 600; font-family: monospace;
+          color: rgba(255,255,255,0.35); background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; padding: 1px 5px;
+        `;
+        leftWrap.appendChild(macBadge);
+      }
+
+      if (!isRecognized) {
+        const badge = document.createElement('span');
+        badge.textContent = 'Unrecognized';
+        badge.title = 'Not in audio device whitelist — you can still create a profile manually.';
+        badge.style.cssText = `
+          font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+          color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.07);
+          border: 1px solid rgba(255,255,255,0.12); border-radius: 3px; padding: 1px 5px;
+        `;
+        leftWrap.appendChild(badge);
+      }
+      
+      const actionBtn = document.createElement('button');
+      actionBtn.className = 'btn';
+      actionBtn.style.fontSize = '10px';
+      actionBtn.style.padding = '4px 8px';
+      actionBtn.style.borderColor = 'var(--accent)';
+      
+      // Count how many paired devices share this name in the full list
+      const pairedWithThisName = displayList.filter(d => (d.name || d) === devName).length;
+      // Count how many profiles exist for this base name (accounting for " (2)" suffixes)
+      const profilesForThisName = deviceProfiles.filter(p =>
+        p.friendly_name === devName || p.friendly_name.replace(/ \(\d+\)$/, '') === devName
+      ).length;
+      const allSlotsFilled = profilesForThisName >= pairedWithThisName;
+
+      if (allSlotsFilled) {
+        actionBtn.textContent = 'View Profile';
+        actionBtn.addEventListener('click', () => {
+          const select = document.getElementById('profile-select-dropdown');
+          if (select) {
+            // Select the first matching profile for this device name
+            const match = deviceProfiles.find(p =>
+              p.friendly_name === devName || p.friendly_name.replace(/ \(\d+\)$/, '') === devName
+            );
+            if (match) select.value = match.friendly_name;
+            select.dispatchEvent(new Event('change'));
+          }
+          const switchTabEdit = document.getElementById('switch-tab-edit');
+          if (switchTabEdit) switchTabEdit.click();
+        });
+      } else {
+        actionBtn.textContent = 'Create Profile';
+        actionBtn.addEventListener('click', () => {
+          const switchTabAdd = document.getElementById('switch-tab-add');
+          if (switchTabAdd) switchTabAdd.click();
+          const addSelectDevice = document.getElementById('add-profile-select-device');
+          if (addSelectDevice) {
+            const options = [...addSelectDevice.options];
+            const hasOption = options.some(o => o.value === devName);
+            if (!hasOption) {
+              const opt = document.createElement('option');
+              opt.value = devName;
+              opt.textContent = devName;
+              opt.dataset.mac = devMac;
+              addSelectDevice.appendChild(opt);
+            }
+            addSelectDevice.value = devName;
+            addSelectDevice.dispatchEvent(new Event('change'));
+          }
+        });
+      }
+      
+      row.appendChild(leftWrap);
+      row.appendChild(actionBtn);
+      pairedContainer.appendChild(row);
+    });
+  }
+}
+
+if (btnOpenSetup && setupDialog) {
+  btnOpenSetup.addEventListener('click', () => {
+    // Show setup dialog instantly!
+    setupDialog.hidden = false;
+    
+    // Default to Edit tab initially on open
+    if (switchTabEdit) switchTabEdit.click();
+    
+    // Populate select dropdown with existing cached profiles immediately
+    populateProfileSelectDropdown();
+    resetProfileForm();
+    
+    // Fetch fresh profiles and paired devices asynchronously
+    (async () => {
+      try {
+        await loadDeviceProfiles();
+        populateProfileSelectDropdown();
+      } catch (err) {
+        console.error('Failed to load fresh profiles', err);
+      }
+      await refreshPairedDevicesList();
+    })();
+  });
+}
+
+async function refreshPairedDevicesList() {
+  try {
+    const paired = await invoke('get_paired_devices');
+    // paired is now [{name, mac}, ...]
+    const filteredPaired = paired.filter(d => isTargetEarbudDevice(d.name));
+    
+    // 1. Populate the Add tab dropdown select
+    const addSelectDevice = document.getElementById('add-profile-select-device');
+    if (addSelectDevice) {
+      addSelectDevice.innerHTML = '';
+      
+      const placeholderOpt = document.createElement('option');
+      placeholderOpt.value = '';
+      placeholderOpt.textContent = 'None Selected';
+      addSelectDevice.appendChild(placeholderOpt);
+
+      // Count how many paired devices have each name
+      const pairedNameCount = {};
+      filteredPaired.forEach(d => { pairedNameCount[d.name] = (pairedNameCount[d.name] || 0) + 1; });
+      // Count how many profiles exist for each base name
+      const profileNameCount = {};
+      deviceProfiles.forEach(p => {
+        const base = p.friendly_name.replace(/ \(\d+\)$/, '');
+        profileNameCount[base] = (profileNameCount[base] || 0) + 1;
+      });
+
+      filteredPaired.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.name;
+        opt.dataset.mac = d.mac || '';
+        const slotsFilled = (profileNameCount[d.name] || 0) >= (pairedNameCount[d.name] || 1);
+        if (slotsFilled) {
+          opt.disabled = true;
+          opt.textContent = `${d.name} (Profile Already Created)`;
+        } else {
+          opt.textContent = d.name;
+        }
+        addSelectDevice.appendChild(opt);
+      });
+
+      // Auto-select the first non-disabled option, or default to empty
+      const firstEnabled = [...addSelectDevice.options].find(o => !o.disabled);
+      if (firstEnabled) {
+        addSelectDevice.value = firstEnabled.value;
+      } else {
+        addSelectDevice.value = '';
+      }
+      addSelectDevice.dispatchEvent(new Event('change'));
+    }
+    
+    // 2. Populate the Paired tab devices list
+    renderPairedDevicesList(paired);
+    
+    resetProfileForm();
+  } catch (err) {
+    console.error('Failed to refresh paired devices list', err);
+  }
+}
+
+const btnRefreshPaired = document.getElementById('btn-refresh-paired');
+if (btnRefreshPaired) {
+  btnRefreshPaired.addEventListener('click', async () => {
+    const icon = document.getElementById('btn-refresh-paired-icon');
+    if (icon) icon.classList.add('spinner');
+    btnRefreshPaired.disabled = true;
+    try {
+      await loadDeviceProfiles();
+      populateProfileSelectDropdown();
+      await refreshPairedDevicesList();
+      showNotificationToast("Paired devices list refreshed.");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      if (icon) icon.classList.remove('spinner');
+      btnRefreshPaired.disabled = false;
+    }
+  });
+}
+
+if (btnCloseSetup && setupDialog) {
+  btnCloseSetup.addEventListener('click', () => {
+    setupDialog.hidden = true;
+  });
+}
+
+// Populate brand dropdowns from PROTOCOL_DB + Generic / Other
+function populateBrandDropdowns() {
+  const selects = [
+    document.getElementById('edit-profile-brand'),
+    document.getElementById('add-profile-brand'),
+  ];
+  selects.forEach(sel => {
+    if (!sel) return;
+    sel.innerHTML = '';
+    
+    // Add "None Selected" placeholder
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'None Selected';
+    sel.appendChild(placeholder);
+
+    PROTOCOL_DB.forEach(entry => {
+      const opt = document.createElement('option');
+      opt.value = entry.key;
+      opt.textContent = entry.brand;
+      sel.appendChild(opt);
+    });
+    const generic = document.createElement('option');
+    generic.value = 'generic_other';
+    generic.textContent = 'Generic / Other';
+    sel.appendChild(generic);
+  });
+}
+populateBrandDropdowns();
+
+function updateBrandHint(brandKey, statusElId, textElId, activeMode = null) {
+  const statusEl = document.getElementById(statusElId);
+  const textEl = document.getElementById(textElId);
+  if (!statusEl || !textEl) return;
+
+  if (!brandKey) {
+    statusEl.style.display = 'none';
+    textEl.innerHTML = '';
+    return;
+  }
+
+  let hintText = '';
+  if (brandKey === 'generic_other') {
+    statusEl.style.display = 'flex';
+    hintText = 'Generic: will use Standard GATT BAS only (no SPP probe).';
+    if (activeMode) {
+      hintText += '\nCurrently using: Standard GATT BAS';
+    }
+  } else if (brandKey === 'apple_airpods') {
+    statusEl.style.display = 'flex';
+    hintText = 'Will sniff passive BLE advertisements (Company ID: 0x004C).';
+    if (activeMode) {
+      hintText += '\nCurrently using: BLE Sniffing';
+    }
+  } else {
+    const entry = PROTOCOL_DB.find(e => e.key === brandKey);
+    if (entry) {
+      statusEl.style.display = 'flex';
+      if (entry.status === 'Implemented ✓') {
+        hintText = `Will try Proprietary RFCOMM (${entry.brand}) first, fall back to GATT on failure.`;
+      } else {
+        hintText = `Protocol documented but not yet implemented — will probe SPP then fall back to GATT.`;
+      }
+
+      if (activeMode) {
+        let modeDisplay = 'Auto-Detect (Connecting...)';
+        if (activeMode === 'proprietary') {
+          modeDisplay = 'Proprietary RFCOMM';
+        } else if (activeMode === 'standard') {
+          modeDisplay = 'Standard GATT BAS';
+        }
+        hintText += `\nCurrently using: ${modeDisplay}`;
+      }
+    } else {
+      statusEl.style.display = 'none';
+    }
+  }
+
+  if (hintText) {
+    textEl.innerHTML = hintText.replace(/\n/g, '<br>');
+  }
+}
+
+// Global event listener for profile selection dropdown (registered once)
+const profileSelectDropdown = document.getElementById('profile-select-dropdown');
+if (profileSelectDropdown) {
+  profileSelectDropdown.addEventListener('change', () => {
+    const selectedName = profileSelectDropdown.value;
+    const p = deviceProfiles.find(x => x.friendly_name === selectedName);
+    if (p) {
+      document.getElementById('edit-profile-friendly-name').value = p.friendly_name;
+      document.getElementById('edit-profile-brand').value = p.brand || 'generic_other';
+      updateBrandHint(
+        p.brand || 'generic_other',
+        'edit-profile-proto-status',
+        'edit-profile-proto-text',
+        p.protocol_mode
+      );
+    }
+  });
+}
+
+const editBrandEl = document.getElementById('edit-profile-brand');
+if (editBrandEl) {
+  editBrandEl.addEventListener('change', () => {
+    const selectedName = profileSelectDropdown.value;
+    const p = deviceProfiles.find(x => x.friendly_name === selectedName);
+    const activeMode = p && p.brand === editBrandEl.value ? p.protocol_mode : 'auto';
+    updateBrandHint(editBrandEl.value, 'edit-profile-proto-status', 'edit-profile-proto-text', activeMode);
+  });
+}
+
+const addBrandEl = document.getElementById('add-profile-brand');
+if (addBrandEl) {
+  addBrandEl.addEventListener('change', () => {
+    updateBrandHint(addBrandEl.value, 'add-profile-proto-hint', 'add-profile-proto-text');
+  });
+  // Show initial hint
+  updateBrandHint(addBrandEl.value, 'add-profile-proto-hint', 'add-profile-proto-text');
+}
+
+function populateProfileSelectDropdown() {
+  const select = document.getElementById('profile-select-dropdown');
+  if (!select) return;
+  select.innerHTML = '';
+  deviceProfiles.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.friendly_name;
+    opt.textContent = p.friendly_name + (p.friendly_name === currentDeviceName ? ' (Active)' : '');
+    select.appendChild(opt);
+  });
+  
+  // Trigger change handler initially for the first profile in list
+  if (deviceProfiles.length > 0) {
+    select.value = currentDeviceName;
+    select.dispatchEvent(new Event('change'));
+  }
+}
+
+function resetProfileForm() {
+  const selectDevice = document.getElementById('add-profile-select-device');
+  const brandInput = document.getElementById('add-profile-brand');
+  const protoInput = document.getElementById('add-profile-protocol');
+  if (selectDevice) {
+    const firstEnabledIdx = [...selectDevice.options].findIndex(o => !o.disabled);
+    if (firstEnabledIdx !== -1) {
+      selectDevice.selectedIndex = firstEnabledIdx;
+    } else {
+      selectDevice.value = '';
+    }
+    selectDevice.dispatchEvent(new Event('change'));
+  }
+  if (brandInput) {
+    brandInput.value = '';
+    brandInput.dispatchEvent(new Event('change'));
+  }
+  if (protoInput) protoInput.value = 'auto';
+}
+
+const btnDeleteProfile = document.getElementById('btn-delete-profile');
+if (btnDeleteProfile) {
+  btnDeleteProfile.addEventListener('click', () => {
+    const select = document.getElementById('profile-select-dropdown');
+    if (!select || !select.value) return;
+    const name = select.value;
+    pendingAuthAction = 'delete-profile';
+    pendingDeleteProfileName = name;
+    
+    const titleEl = document.getElementById('confirm-dialog-title');
+    const msgEl = document.getElementById('confirm-dialog-msg');
+    if (titleEl) {
+      titleEl.innerHTML = `
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; margin-right: 8px;">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          <line x1="12" y1="9" x2="12" y2="13" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+        Delete Profile?
+      `;
+    }
+    if (msgEl) {
+      msgEl.textContent = `This will permanently delete the profile "${name}" and all session history and statistics associated with it. You will need to verify your Windows password to proceed.`;
+    }
+    dialog.hidden = false;
+  });
+}
+
+const btnSaveEditProfile = document.getElementById('btn-save-edit-profile');
+if (btnSaveEditProfile) {
+  btnSaveEditProfile.addEventListener('click', async () => {
+    const friendlyName = document.getElementById('edit-profile-friendly-name').value.trim();
+    if (!friendlyName) {
+      showNotificationToast("No profile selected to edit.");
+      return;
+    }
+    const brand = document.getElementById('edit-profile-brand').value;
+    if (!brand) {
+      showNotificationToast("Please select a brand/manufacturer.");
+      return;
+    }
+    // If the brand changed vs what was previously saved, reset protocol_mode to 'auto'
+    // so the first connection re-discovers the correct method.
+    const existing = deviceProfiles.find(x => x.friendly_name === friendlyName);
+    const macAddress = existing ? existing.mac_address : null;
+    const prevBrand = existing ? existing.brand : null;
+    const protocol_mode = (prevBrand && prevBrand !== brand) ? 'auto' : (existing?.protocol_mode || 'auto');
+
+    // Read universal settings directly from global settings dropdowns
+    const batteryInterval = parseInt(document.getElementById('battery-interval-select').value, 10) || 300;
+    const batteryStep = parseInt(document.getElementById('battery-step-select').value, 10) || 5;
+
+    const profile = {
+      friendly_name: friendlyName,
+      brand,
+      protocol_mode,
+      battery_interval: batteryInterval,
+      battery_step: batteryStep,
+      mac_address: macAddress
+    };
+    
+    try {
+      await invoke('save_device_profile', { profile });
+      await loadDeviceProfiles();
+      populateProfileSelectDropdown();
+      showNotificationToast("Changes saved successfully!");
+    } catch (err) {
+      console.error(err);
+      showNotificationToast("Error saving changes: " + err);
+    }
+  });
+}
+
+const btnCreateProfile = document.getElementById('btn-create-profile');
+if (btnCreateProfile) {
+  btnCreateProfile.addEventListener('click', async () => {
+    const selectDevice = document.getElementById('add-profile-select-device');
+    const friendlyName = selectDevice ? selectDevice.value.trim() : "";
+    
+    if (!friendlyName) {
+      showNotificationToast("Please select a device.");
+      return;
+    }
+    // Read the MAC that was stored in the option's dataset when the list was populated
+    const selectedOpt = selectDevice ? [...selectDevice.options].find(o => o.value === friendlyName) : null;
+    const macAddress = (selectedOpt?.dataset?.mac || '').trim() || null;
+
+    const brand = document.getElementById('add-profile-brand').value;
+    if (!brand) {
+      showNotificationToast("Please select a brand/manufacturer.");
+      return;
+    }
+    
+    // Read universal settings directly from global settings dropdowns
+    const batteryInterval = parseInt(document.getElementById('battery-interval-select').value, 10) || 300;
+    const batteryStep = parseInt(document.getElementById('battery-step-select').value, 10) || 5;
+    
+    const profile = {
+      friendly_name: friendlyName,
+      brand,
+      protocol_mode: 'auto',   // always start fresh — discovery runs on first connection
+      battery_interval: batteryInterval,
+      battery_step: batteryStep,
+      mac_address: macAddress
+    };
+    
+    try {
+      const savedName = await invoke('create_device_profile', { profile });
+      await loadDeviceProfiles();
+      const successMsg = (savedName && savedName !== friendlyName)
+        ? `Profile created as "${savedName}" (two devices with same name — both registered).`
+        : `Profile "${savedName || friendlyName}" created successfully!`;
+      populateProfileSelectDropdown();
+      resetProfileForm();
+      showNotificationToast(successMsg);
+    } catch (err) {
+      console.error(err);
+      showNotificationToast("Error creating profile: " + err);
+    }
+  });
+}
+
 async function importAllDataFromFile(file) {
   if (!file) return;
 
@@ -703,6 +1566,9 @@ async function importAllDataFromFile(file) {
       throw new Error('Import failed');
     }
     await restoreSettingsFromBackup(payload.settings || {});
+    await loadDeviceProfiles();
+    await refreshSnapshot();
+    refreshActivePage();
     const dbCounts = {
       sessions: Array.isArray(database.sessions) ? database.sessions.length : 0,
       daily_stats: Array.isArray(database.daily_stats) ? database.daily_stats.length : 0,
@@ -808,6 +1674,7 @@ function navigateToPage(page) {
     if (page === 'history') loadHistory();
     if (page === 'statistics') updateDailyStatsAndChart();
     if (page === 'battery') loadBatteryGraph();
+    if (page === 'breakdown') bdLoadSessions();
   }
 }
 
@@ -1024,6 +1891,22 @@ function buildBatteryGraphTooltipHtml(pt, title = 'Session Details') {
   const startC = formatPct(pt.case_start);
   const endC = formatPct(pt.case_end);
 
+  const isUnified = activeProfile && (
+    activeProfile.protocol_mode === 'standard' || 
+    activeProfile.brand === 'generic_other'
+  );
+
+  let batteryRowsHtml = '';
+  if (isUnified) {
+    batteryRowsHtml = `<div class="tooltip-row"><span class="tooltip-label">Battery Level</span><span class="tooltip-value">${escapeHtml(startL)} → ${escapeHtml(endL)}</span></div>`;
+  } else {
+    batteryRowsHtml = `
+      <div class="tooltip-row"><span class="tooltip-label">Left Bud</span><span class="tooltip-value">${escapeHtml(startL)} → ${escapeHtml(endL)}</span></div>
+      <div class="tooltip-row"><span class="tooltip-label">Right Bud</span><span class="tooltip-value">${escapeHtml(startR)} → ${escapeHtml(endR)}</span></div>
+      <div class="tooltip-row"><span class="tooltip-label">Case</span><span class="tooltip-value">${escapeHtml(startC)} → ${escapeHtml(endC)}</span></div>
+    `;
+  }
+
   return `
     <div class="chart-tooltip">
       <div class="tooltip-title">${escapeHtml(title)}</div>
@@ -1032,9 +1915,7 @@ function buildBatteryGraphTooltipHtml(pt, title = 'Session Details') {
       <div class="tooltip-row"><span class="tooltip-label">Connection</span><span class="tooltip-value">${escapeHtml(formatDuration(pt.connected_secs))}</span></div>
       <div class="tooltip-row"><span class="tooltip-label">Playback</span><span class="tooltip-value">${escapeHtml(formatDuration(pt.playback_secs))}</span></div>
       <div style="border-top: 1px solid rgba(255,255,255,0.08); margin: 6px 0;"></div>
-      <div class="tooltip-row"><span class="tooltip-label">Left Bud</span><span class="tooltip-value">${escapeHtml(startL)} → ${escapeHtml(endL)}</span></div>
-      <div class="tooltip-row"><span class="tooltip-label">Right Bud</span><span class="tooltip-value">${escapeHtml(startR)} → ${escapeHtml(endR)}</span></div>
-      <div class="tooltip-row"><span class="tooltip-label">Case</span><span class="tooltip-value">${escapeHtml(startC)} → ${escapeHtml(endC)}</span></div>
+      ${batteryRowsHtml}
     </div>
   `;
 }
@@ -1341,6 +2222,8 @@ function drawRing(connSecs, playSecs, connected, playing, goalMet) {
     ? (goalMet ? '#fbbf24' : '#4ade80')
     : '#2a3a2a';
 
+  const isUnified = false;
+
   // Apply a lighter pulse glow to playback ring when active
   if (playing) {
     ctx.shadowBlur = (goalMet ? 3 : 4) * pulseFactor;
@@ -1349,40 +2232,58 @@ function drawRing(connSecs, playSecs, connected, playing, goalMet) {
     ctx.shadowBlur = 0;
   }
 
-  function arc(r, start, span, color) {
+  function arc(r, start, span, color, strokeW = sw) {
     ctx.beginPath();
     ctx.arc(cx, cy, r, start, start + span, span < 0);
     ctx.strokeStyle = color;
-    ctx.lineWidth = sw;
+    ctx.lineWidth = strokeW;
     ctx.lineCap = 'round';
     ctx.stroke();
   }
 
-  // Tracks
-  arc(rOut, 0, Math.PI * 2, trackOut);
-
   const ROUND_SECS = 3600;
-
-  // Outer progress arc (connection)
-  const connSpan = connSecs > 0 ? ((connSecs % ROUND_SECS) / ROUND_SECS) * Math.PI * 2 : 0;
-  if (connSpan > 0) {
-    arc(rOut, -Math.PI / 2, connSpan, connCol);
-  }
-
-  // Inner track
-  ctx.shadowBlur = 0; // reset shadow for inner track
-  arc(rIn, 0, Math.PI * 2, trackIn);
-
-  // Inner progress arc (playback) with glow
-  if (playing) {
-    ctx.shadowBlur = (goalMet ? 3 : 4) * pulseFactor;
-    ctx.shadowColor = goalMet ? '#fbbf24' : '#4ade80';
-  }
   const playSpan = playSecs > 0 ? ((playSecs % ROUND_SECS) / ROUND_SECS) * Math.PI * 2 : 0;
-  if (playSpan > 0) {
-    arc(rIn, -Math.PI / 2, playSpan, playCol);
+  const connSpan = connSecs > 0 ? ((connSecs % ROUND_SECS) / ROUND_SECS) * Math.PI * 2 : 0;
+
+  if (isUnified) {
+    const rUnified = (rOut + rIn) / 2;
+    const swUnified = 14;
+
+    // Unified Track
+    arc(rUnified, 0, Math.PI * 2, playing ? '#1f3a22' : '#2a2a2e', swUnified);
+
+    // Unified Progress
+    if (playing) {
+      ctx.shadowBlur = (goalMet ? 3 : 4) * pulseFactor;
+      ctx.shadowColor = goalMet ? '#fbbf24' : '#4ade80';
+    }
+    if (playSpan > 0) {
+      arc(rUnified, -Math.PI / 2, playSpan, playCol, swUnified);
+    }
+    ctx.shadowBlur = 0;
+  } else {
+    // Tracks
+    arc(rOut, 0, Math.PI * 2, trackOut);
+
+    // Outer progress arc (connection)
+    if (connSpan > 0) {
+      arc(rOut, -Math.PI / 2, connSpan, connCol);
+    }
+
+    // Inner track
+    ctx.shadowBlur = 0; // reset shadow for inner track
+    arc(rIn, 0, Math.PI * 2, trackIn);
+
+    // Inner progress arc (playback) with glow
+    if (playing) {
+      ctx.shadowBlur = (goalMet ? 3 : 4) * pulseFactor;
+      ctx.shadowColor = goalMet ? '#fbbf24' : '#4ade80';
+    }
+    if (playSpan > 0) {
+      arc(rIn, -Math.PI / 2, playSpan, playCol);
+    }
+    ctx.shadowBlur = 0; // reset
   }
-  ctx.shadowBlur = 0; // reset
 
 
 
@@ -1392,17 +2293,41 @@ function drawRing(connSecs, playSecs, connected, playing, goalMet) {
     const dx = mousePos.x - cx;
     const dy = mousePos.y - cy;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    if (Math.abs(dist - rOut) < 20) {
-      hoverType = 'conn';
-    } else if (Math.abs(dist - rIn) < 20) {
-      hoverType = 'play';
+    if (isUnified) {
+      const rUnified = (rOut + rIn) / 2;
+      if (Math.abs(dist - rUnified) < 20) {
+        hoverType = 'unified';
+      }
+    } else {
+      if (Math.abs(dist - rOut) < 20) {
+        hoverType = 'conn';
+      } else if (Math.abs(dist - rIn) < 20) {
+        hoverType = 'play';
+      }
     }
   }
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  if (hoverType === 'conn') {
+  if (hoverType === 'unified') {
+    const rUnified = (rOut + rIn) / 2;
+    const swUnified = 14;
+    ctx.shadowBlur = goalMet ? 3 : 6;
+    ctx.shadowColor = goalMet ? 'rgba(251,191,36,0.14)' : 'rgba(74,222,128,0.25)';
+    const span = playSecs > 0 ? (playSpan > 0 ? playSpan : Math.PI * 2) : Math.PI * 2;
+    arc(rUnified, -Math.PI / 2, span, playSecs > 0 ? playCol : '#334433', swUnified);
+    ctx.shadowBlur = 0;
+
+    ctx.font = 'bold 10px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#888898';
+    ctx.fillText('PLAYBACK', cx, cy - 14);
+
+    ctx.font = 'bold 14px "Cascadia Code", monospace';
+    ctx.fillStyle = goalMet ? '#fbbf24' : '#4ade80';
+    const playTimeStr = document.getElementById('play-time').textContent;
+    ctx.fillText(playTimeStr, cx, cy + 8);
+  } else if (hoverType === 'conn') {
     // Draw a subtle highlight glow on the outer ring
     ctx.shadowBlur = 6;
     ctx.shadowColor = 'rgba(255,255,255,0.2)';
@@ -1703,8 +2628,32 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
   }
 }
 
+// ── Bluetooth Radio State ──────────────────────────────────────────────────────
+async function updateBluetoothRadioStatus() {
+  const badge = document.getElementById('bt-status-indicator');
+  const label = document.getElementById('bt-status-text');
+  if (!badge || !label) return;
+
+  try {
+    const isEnabled = await invoke('is_bluetooth_enabled');
+    if (isEnabled) {
+      badge.classList.remove('bt-off');
+      badge.classList.add('bt-on');
+      label.textContent = 'Bluetooth On';
+    } else {
+      badge.classList.remove('bt-on');
+      badge.classList.add('bt-off');
+      label.textContent = 'Bluetooth Off';
+    }
+  } catch (e) {
+    console.error('is_bluetooth_enabled failed', e);
+  }
+}
+
 // ── Snapshot refresh ──────────────────────────────────────────────────────────
 async function refreshSnapshot() {
+  updateBluetoothRadioStatus();
+
   let snap;
   try {
     snap = await invoke('get_snapshot');
@@ -2109,6 +3058,8 @@ function updateBatteryUI(batteryInfo) {
     }
   };
 
+  const isUnified = activeProfile && (activeProfile.protocol_mode === 'standard' || activeProfile.brand === 'generic_other');
+
   const leftVal = batteryInfo ? batteryInfo.left : null;
   const leftChar = batteryInfo ? batteryInfo.left_charging : false;
   const rightVal = batteryInfo ? batteryInfo.right : null;
@@ -2116,9 +3067,13 @@ function updateBatteryUI(batteryInfo) {
   const caseVal = batteryInfo ? batteryInfo.case : null;
   const caseChar = batteryInfo ? batteryInfo.case_charging : false;
 
-  updateItem('bat-left-container', 'bat-left-val', 'bat-left-progress', null, leftVal, leftChar);
-  updateItem('bat-case-container', 'bat-case-val', 'bat-case-progress', 'bat-case-track', caseVal, caseChar);
-  updateItem('bat-right-container', 'bat-right-val', 'bat-right-progress', null, rightVal, rightChar);
+  if (isUnified) {
+    updateItem('bat-universal-container', 'bat-universal-val', 'bat-universal-progress', null, leftVal, leftChar);
+  } else {
+    updateItem('bat-left-container', 'bat-left-val', 'bat-left-progress', null, leftVal, leftChar);
+    updateItem('bat-case-container', 'bat-case-val', 'bat-case-progress', 'bat-case-track', caseVal, caseChar);
+    updateItem('bat-right-container', 'bat-right-val', 'bat-right-progress', null, rightVal, rightChar);
+  }
 }
 
 // ── History ───────────────────────────────────────────────────────────────────
@@ -2140,6 +3095,16 @@ function fmtSessBattery(r) {
     }
     return `${connStr} → ${discStr}`;
   };
+
+  const prof = typeof deviceProfiles !== 'undefined' ? deviceProfiles.find(p => p.friendly_name === r.device_name) : null;
+  const isUnifiedSess = (prof && (prof.protocol_mode === 'standard' || prof.brand === 'generic_other')) || 
+                        (!prof && r.bat_right_connect === null && r.bat_case_connect === null && r.bat_right_disc === null && r.bat_case_disc === null);
+
+  if (isUnifiedSess) {
+    return `<div class="mono" style="font-size:0.75rem;line-height:1.3;white-space:nowrap;">
+      Battery: ${formatBud(r.bat_left_connect, r.bat_left_disc)}
+    </div>`;
+  }
 
   return `<div class="mono" style="font-size:0.75rem;line-height:1.3;white-space:nowrap;">
     L: ${formatBud(r.bat_left_connect, r.bat_left_disc)}<br/>
@@ -2182,15 +3147,33 @@ const authPwdInput = document.getElementById('auth-password-input');
 const authError = document.getElementById('auth-error');
 const authUsername = document.getElementById('auth-username');
 
+let pendingAuthAction = null; // 'reset-all' or 'delete-profile'
+let pendingDeleteProfileName = '';
+
 // Populate username label
 if (authUsername) {
-  // Tauri doesn't expose env vars to JS, so we show a generic label.
-  // The Rust side uses $env:USERNAME automatically.
   authUsername.textContent = 'your Windows account';
 }
 
-// Step 1 – show confirm dialog
+// Step 1 – show confirm dialog for Reset
 document.getElementById('reset-btn').addEventListener('click', () => {
+  pendingAuthAction = 'reset-all';
+  const titleEl = document.getElementById('confirm-dialog-title');
+  const msgEl = document.getElementById('confirm-dialog-msg');
+  if (titleEl) {
+    titleEl.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; margin-right: 8px;">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+        <line x1="12" y1="9" x2="12" y2="13" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </svg>
+      Reset All Data?
+    `;
+  }
+  if (msgEl) {
+    msgEl.textContent = 'This will permanently delete all session history and statistics. You will need to verify your Windows password to proceed.';
+  }
   dialog.hidden = false;
 });
 
@@ -2204,6 +3187,12 @@ document.getElementById('dialog-confirm').addEventListener('click', () => {
   dialog.hidden = true;
   if (authPwdInput) authPwdInput.value = '';
   if (authError) authError.style.display = 'none';
+  
+  const confirmBtn = document.getElementById('auth-confirm');
+  if (confirmBtn) {
+    confirmBtn.textContent = pendingAuthAction === 'reset-all' ? 'Confirm Reset' : 'Confirm Delete';
+  }
+  
   authDialog.hidden = false;
   // Auto-focus the password field
   setTimeout(() => authPwdInput && authPwdInput.focus(), 60);
@@ -2216,7 +3205,7 @@ document.getElementById('auth-cancel').addEventListener('click', () => {
   if (authError) authError.style.display = 'none';
 });
 
-// Step 2 – confirm: verify password then reset
+// Step 2 – confirm: verify password then reset or delete
 document.getElementById('auth-confirm').addEventListener('click', async () => {
   const pwd = authPwdInput ? authPwdInput.value : '';
   const confirmBtn = document.getElementById('auth-confirm');
@@ -2230,26 +3219,53 @@ document.getElementById('auth-confirm').addEventListener('click', async () => {
     console.error('verify_windows_password failed', e);
   } finally {
     confirmBtn.disabled = false;
-    confirmBtn.textContent = 'Confirm Reset';
+    confirmBtn.textContent = pendingAuthAction === 'reset-all' ? 'Confirm Reset' : 'Confirm Delete';
   }
 
   if (ok) {
     authDialog.hidden = true;
     if (authPwdInput) authPwdInput.value = '';
-    try {
-      await invoke('reset_all');
-      localStorage.removeItem('daily-playback-cache-date');
-      localStorage.removeItem('daily-playback-cache-secs');
-      if (resetSuccessMsg) {
-        resetSuccessMsg.textContent = 'All session history and statistics have been reset.';
-      }
-      if (resetSuccessDialog) resetSuccessDialog.hidden = false;
+    
+    if (pendingAuthAction === 'reset-all') {
       try {
-        await refreshSnapshot();
-      } catch (refreshErr) {
-        console.error('refreshSnapshot after reset failed', refreshErr);
+        await invoke('reset_all');
+        localStorage.removeItem('daily-playback-cache-date');
+        localStorage.removeItem('daily-playback-cache-secs');
+        statsHistoryBoundsPromise = null;
+        statsWeekOffset = 0;
+        statsMaxWeekOffset = null;
+        if (resetSuccessMsg) {
+          resetSuccessMsg.textContent = 'All session history and statistics have been reset.';
+        }
+        if (resetSuccessDialog) resetSuccessDialog.hidden = false;
+        try {
+          await refreshSnapshot();
+          refreshActivePage();
+        } catch (refreshErr) {
+          console.error('refreshSnapshot after reset failed', refreshErr);
+        }
+      } catch (e) { console.error('reset_all failed', e); }
+    } else if (pendingAuthAction === 'delete-profile') {
+      const name = pendingDeleteProfileName;
+      try {
+        await invoke('delete_device_profile', { name });
+        await loadDeviceProfiles();
+        populateProfileSelectDropdown();
+        statsHistoryBoundsPromise = null;
+        statsWeekOffset = 0;
+        statsMaxWeekOffset = null;
+        showNotificationToast(`Profile "${name}" and all associated data deleted successfully.`);
+        try {
+          await refreshSnapshot();
+          refreshActivePage();
+        } catch (refreshErr) {
+          console.error('refreshSnapshot after profile delete failed', refreshErr);
+        }
+      } catch (err) {
+        console.error(err);
+        showNotificationToast("Error deleting profile: " + err);
       }
-    } catch (e) { console.error('reset_all failed', e); }
+    }
   } else {
     if (authPwdInput) authPwdInput.value = '';
     if (authError) authError.style.display = 'block';
@@ -2270,13 +3286,78 @@ setInterval(refreshSnapshot, 1000);
 
 // ── Initial draw ──────────────────────────────────────────────────────────────
 drawRing(0, 0, false, false, false);
-refreshSnapshot();
+loadDeviceProfiles().then(() => {
+  refreshSnapshot();
+});
 
-// ── Redraw chart on window resize ─────────────────────────────────────────────
+// ── Custom themed spinners for type=number inputs ─────────────────────────────
+function initNumSpinners() {
+  document.querySelectorAll('input[type="number"].input-field').forEach(input => {
+    // Skip if already wrapped
+    if (input.closest('.num-input-wrapper')) return;
+
+    // Preserve original width & inherit it on the wrapper
+    const origWidth = input.style.width || '';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'num-input-wrapper';
+    if (origWidth) wrapper.style.width = origWidth;
+    input.style.width = '100%'; // fill wrapper
+
+    input.parentNode.insertBefore(wrapper, input);
+    wrapper.appendChild(input);
+
+    // Build ▲ / ▼ buttons
+    const btns = document.createElement('div');
+    btns.className = 'num-spin-btns';
+
+    const up = document.createElement('button');
+    up.type = 'button';
+    up.className = 'num-spin-btn';
+    up.innerHTML = '▲';
+    up.title = 'Increase';
+
+    const dn = document.createElement('button');
+    dn.type = 'button';
+    dn.className = 'num-spin-btn';
+    dn.innerHTML = '▼';
+    dn.title = 'Decrease';
+
+    btns.appendChild(up);
+    btns.appendChild(dn);
+    wrapper.appendChild(btns);
+
+    function step(dir) {
+      const s = parseFloat(input.step) || 1;
+      const min = input.min !== '' ? parseFloat(input.min) : -Infinity;
+      const max = input.max !== '' ? parseFloat(input.max) :  Infinity;
+      const cur = parseFloat(input.value) || 0;
+      const next = Math.min(max, Math.max(min, parseFloat((cur + dir * s).toFixed(10))));
+      input.value = next;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    up.addEventListener('click', () => step(+1));
+    dn.addEventListener('click', () => step(-1));
+  });
+}
+
+initNumSpinners();
+
+
 window.addEventListener('resize', () => {
   const activePage = document.querySelector('.nav-item.active').dataset.page;
   if (activePage === 'statistics') {
     updateDailyStatsAndChart();
+  }
+});
+
+// Close any open popups/dialogs when Escape key is pressed
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.dialog-overlay').forEach(el => {
+      el.hidden = true;
+    });
   }
 });
 
@@ -2452,6 +3533,35 @@ function bdRenderDetail(bd, container) {
        </div>`
     : '';
 
+  const prof = typeof deviceProfiles !== 'undefined' ? deviceProfiles.find(p => p.friendly_name === s.device_name) : null;
+  const isUnifiedSess = (prof && (prof.protocol_mode === 'standard' || prof.brand === 'generic_other')) || 
+                        (!prof && s.bat_right_connect === null && s.bat_case_connect === null && s.bat_right_disc === null && s.bat_case_disc === null);
+
+  let batteryFieldsHtml = '';
+  if (isUnifiedSess) {
+    batteryFieldsHtml = `
+      <div class="bd-info-item">
+        <span class="bd-info-label">Battery</span>
+        <span class="bd-info-value" style="font-size:12px;">${drainStr(batL0, batL1)}</span>
+      </div>
+    `;
+  } else {
+    batteryFieldsHtml = `
+      <div class="bd-info-item">
+        <span class="bd-info-label">Left Earbud</span>
+        <span class="bd-info-value" style="font-size:12px;">${drainStr(batL0, batL1)}</span>
+      </div>
+      <div class="bd-info-item">
+        <span class="bd-info-label">Right Earbud</span>
+        <span class="bd-info-value" style="font-size:12px;">${drainStr(batR0, batR1)}</span>
+      </div>
+      <div class="bd-info-item">
+        <span class="bd-info-label">Case</span>
+        <span class="bd-info-value" style="font-size:12px;">${drainStr(batC0, batC1)}</span>
+      </div>
+    `;
+  }
+
   container.innerHTML = `
     ${interruptedBanner}
     <!-- ── Summary card ── -->
@@ -2474,18 +3584,7 @@ function bdRenderDetail(bd, container) {
           <span class="bd-info-label">Playback</span>
           <span class="bd-info-value green">${bdFmtDur(s.playback_secs)}</span>
         </div>
-        <div class="bd-info-item">
-          <span class="bd-info-label">Left Earbud</span>
-          <span class="bd-info-value" style="font-size:12px;">${drainStr(batL0, batL1)}</span>
-        </div>
-        <div class="bd-info-item">
-          <span class="bd-info-label">Right Earbud</span>
-          <span class="bd-info-value" style="font-size:12px;">${drainStr(batR0, batR1)}</span>
-        </div>
-        <div class="bd-info-item">
-          <span class="bd-info-label">Case</span>
-          <span class="bd-info-value" style="font-size:12px;">${drainStr(batC0, batC1)}</span>
-        </div>
+        ${batteryFieldsHtml}
         <div class="bd-info-item">
           <span class="bd-info-label">Top App</span>
           <span class="bd-info-value" style="font-size:12px;">${topApp ? escapeHtml(bdFmtAppName(topApp.process_name)) + ' · ' + bdFmtDur(topApp.total_secs) : '—'}</span>
@@ -2503,10 +3602,12 @@ function bdRenderDetail(bd, container) {
     <div class="card" id="bd-bat-card" style="${(batL0 == null && batR0 == null && batC0 == null) ? 'display:none' : ''}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <div class="bd-section-title" style="margin:0;">Battery Drain Curve</div>
+        ${isUnifiedSess ? '' : `
         <select id="bd-bat-series" class="input-field" style="width:180px;font-size:12px;padding:5px 10px;">
           <option value="buds">Buds (Left + Right avg)</option>
           <option value="case">Case</option>
         </select>
+        `}
       </div>
       <div class="bd-battery-canvas-wrap">
         <canvas id="bd-bat-canvas"></canvas>
@@ -2565,6 +3666,14 @@ function bdDrawBatteryCurve(s, mode) {
   const canvas = document.getElementById('bd-bat-canvas');
   if (!canvas) return;
   const wrap = canvas.parentElement;
+  
+  const prof = typeof deviceProfiles !== 'undefined' ? deviceProfiles.find(p => p.friendly_name === s.device_name) : null;
+  const isUnifiedSess = (prof && (prof.protocol_mode === 'standard' || prof.brand === 'generic_other')) || 
+                        (!prof && s.bat_right_connect === null && s.bat_case_connect === null && s.bat_right_disc === null && s.bat_case_disc === null);
+  const seriesDropdown = document.getElementById('bd-bat-series');
+  if (seriesDropdown) {
+    seriesDropdown.style.display = isUnifiedSess ? 'none' : 'block';
+  }
   const dpr = window.devicePixelRatio || 1;
   const W = wrap.clientWidth || 400;
   const H = 240;
@@ -2605,10 +3714,14 @@ function bdDrawBatteryCurve(s, mode) {
   c.textAlign = 'right';
   c.fillText('End', padL + chartW, H - 10);
 
-  // Determine series based on dropdown mode
+  // Determine series based on dropdown mode or unified status
   const resolvedMode = mode || document.getElementById('bd-bat-series')?.value || 'buds';
   let series;
-  if (resolvedMode === 'case') {
+  if (isUnifiedSess) {
+    series = [
+      { label: 'Battery', v0: s.bat_left_connect, v1: s.bat_left_disc, color: '#f97316' }
+    ].filter(sr => sr.v0 != null || sr.v1 != null);
+  } else if (resolvedMode === 'case') {
     series = [
       { label: 'Case', v0: s.bat_case_connect, v1: s.bat_case_disc, color: '#fbbf24' },
     ].filter(sr => sr.v0 != null || sr.v1 != null);
@@ -2672,9 +3785,9 @@ function bdDrawBatteryCurve(s, mode) {
         c.fillStyle = sr.color;
         c.font = 'bold 9px "Segoe UI", sans-serif';
         c.textAlign = 'center';
-        // Clamp label inside top padding
         const labelY = Math.max(padT - 6, pt.y - 10);
-        c.fillText(sr.label + ':' + pt.v + '%', pt.x, labelY);
+        const labelText = isUnifiedSess ? (pt.v + '%') : (sr.label + ':' + pt.v + '%');
+        c.fillText(labelText, pt.x, labelY);
       }
     });
   });
@@ -2735,12 +3848,12 @@ const graphTypeOptions = {
   radar: 'Radar Chart'
 };
 
-function syncGraphTypeOptions(item) {
+function syncGraphTypeOptions(item, isUnified = false) {
   const typeSelect = document.getElementById('graph-type');
   if (!typeSelect) return;
 
   const currentValue = typeSelect.value || 'line';
-  const allowedValues = item === 'all'
+  const allowedValues = (item === 'all' && !isUnified)
     ? ['line', 'area', 'bar', 'pie', 'donut', 'radar']
     : ['line', 'area', 'bar'];
 
@@ -2778,7 +3891,16 @@ async function loadBatteryGraph() {
     return `${hrs}:${mins} ${ampm}`;
   };
 
-  syncGraphTypeOptions(item);
+  const isUnified = activeProfile && (
+    activeProfile.protocol_mode === 'standard' || 
+    activeProfile.brand === 'generic_other'
+  );
+  const itemContainer = document.getElementById('graph-item-container');
+  if (itemContainer) {
+    itemContainer.style.display = isUnified ? 'none' : 'flex';
+  }
+
+  syncGraphTypeOptions(item, isUnified);
   const typeSelect = document.getElementById('graph-type');
   chartType = typeSelect?.value || chartType;
   if (item !== 'all' && chartType === 'radar') {
@@ -3096,7 +4218,10 @@ async function loadBatteryGraph() {
     const caseDrain = Math.max(0, (ptCaseStart ?? 0) - (caseE ?? 0));
     const avgDrain = roundToStep((leftDrain + rightDrain) / 2);
 
-    if (chartType === 'pie' || chartType === 'donut') {
+    if (isUnified) {
+      series = [{ name: 'Battery Level', data: [ptLeftStart ?? 0, leftE ?? 0] }];
+      colors = [greenColor];
+    } else if (chartType === 'pie' || chartType === 'donut') {
       if (item === 'left') {
         series = [leftDrain];
         categories = ['Left Bud'];
@@ -3368,7 +4493,10 @@ async function loadBatteryGraph() {
       };
     } else {
       // Line, Area, Bar
-      if (item === 'left') {
+      if (isUnified) {
+        series = [{ name: 'Battery Level', data: leftLevels }];
+        colors = [greenColor];
+      } else if (item === 'left') {
 
         series = [{ name: 'Left Bud', data: leftLevels }];
         colors = [greenColor];
@@ -3960,6 +5088,8 @@ function initForceUpdateBtn() {
   });
 }
 
+let toastTimeout = null;
+
 // Simple toast notification helper
 function showNotificationToast(msg) {
   let toast = document.getElementById('force-update-toast');
@@ -3988,8 +5118,92 @@ function showNotificationToast(msg) {
   toast.textContent = msg;
   toast.style.opacity = '1';
   toast.style.transform = 'translateY(0)';
-  setTimeout(() => {
+  
+  if (toastTimeout) {
+    clearTimeout(toastTimeout);
+  }
+  
+  toastTimeout = setTimeout(() => {
     toast.style.opacity = '0';
     toast.style.transform = 'translateY(10px)';
-  }, 3000);
+    toastTimeout = null;
+  }, 5000); // 5 seconds
+}
+
+
+
+function renderProtocolDb() {
+  const container = document.getElementById('protocol-db-content');
+  if (!container) return;
+
+  const badgeStyles = {
+    'badge-implemented': 'background:rgba(52,211,153,0.15);color:#34d399;border:1px solid rgba(52,211,153,0.3);',
+    'badge-notimpl':     'background:rgba(248,113,113,0.12);color:#f87171;border:1px solid rgba(248,113,113,0.3);',
+    'badge-gatt':        'background:rgba(96,165,250,0.12);color:#60a5fa;border:1px solid rgba(96,165,250,0.3);',
+  };
+
+  container.innerHTML = PROTOCOL_DB.map(entry => `
+    <div style="
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
+    ">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+        <span style="font-size:15px; font-weight:700; color:#e2e8f0;">${entry.brand}</span>
+        <span style="font-size:11px; padding:2px 9px; border-radius:99px; ${badgeStyles[entry.statusClass]}">${entry.status}</span>
+        <span style="font-size:11px; color:#64748b; margin-left:auto;">${entry.transport}</span>
+      </div>
+      <div style="font-size:12px; color:#94a3b8; margin-bottom:10px;">
+        <strong style="color:#cbd5e1;">Models:</strong> ${entry.models}
+      </div>
+      <div style="background:rgba(0,0,0,0.25); border-radius:7px; padding:12px; margin-bottom:10px; overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
+          <tr>
+            <td style="color:#64748b; padding:3px 8px 3px 0; white-space:nowrap; vertical-align:top; width:130px;">Service UUID</td>
+            <td style="color:#a5b4fc; font-family:monospace; word-break:break-all;">${entry.uuid}</td>
+          </tr>
+          <tr>
+            <td style="color:#64748b; padding:3px 8px 3px 0; white-space:nowrap; vertical-align:top;">Request Bytes</td>
+            <td style="color:#34d399; font-family:monospace; letter-spacing:1px;">${entry.request}</td>
+          </tr>
+          <tr>
+            <td style="color:#64748b; padding:3px 8px 3px 0; white-space:nowrap; vertical-align:top;">Response Format</td>
+            <td style="color:#fbbf24; font-family:monospace; letter-spacing:1px; word-break:break-all;">${entry.response}</td>
+          </tr>
+        </table>
+      </div>
+      <div style="font-size:11.5px; color:#94a3b8; margin-bottom:6px;">
+        <strong style="color:#cbd5e1;">Notes:</strong> ${entry.notes}
+      </div>
+      <div style="font-size:11px; color:#475569;">
+        <strong style="color:#64748b;">Source:</strong> ${entry.source}
+      </div>
+    </div>
+  `).join('');
+}
+
+const btnProtocolDb = document.getElementById('btn-protocol-db');
+const protocolDbDialog = document.getElementById('protocol-db-dialog');
+const protocolDbClose = document.getElementById('protocol-db-close');
+
+if (btnProtocolDb && protocolDbDialog) {
+  btnProtocolDb.addEventListener('click', () => {
+    renderProtocolDb();
+    protocolDbDialog.hidden = false;
+  });
+}
+
+if (protocolDbClose && protocolDbDialog) {
+  protocolDbClose.addEventListener('click', () => {
+    protocolDbDialog.hidden = true;
+  });
+}
+
+// Close on backdrop click
+if (protocolDbDialog) {
+  protocolDbDialog.addEventListener('click', (e) => {
+    if (e.target === protocolDbDialog) protocolDbDialog.hidden = true;
+  });
 }
