@@ -45,6 +45,11 @@ pub struct DeviceProfile {
     pub protocol_mode: String,
     pub battery_interval: u64,
     pub battery_step: u8,
+    /// Bluetooth hardware MAC address stored as a hex string (e.g. "AABBCCDDEEFF").
+    /// Saved when the user adds a profile from the paired-devices list.
+    /// `None` for profiles created before this feature or migrated from legacy installs.
+    #[serde(default)]
+    pub mac_address: Option<String>,
 }
 
 // Unified application settings, persisted in `settings.json` under the OS app-data dir.
@@ -86,6 +91,7 @@ fn default_device_profiles() -> Vec<DeviceProfile> {
         protocol_mode: "auto".to_string(),
         battery_interval: 300,
         battery_step: 5,
+        mac_address: None,
     }]
 }
 fn default_active_device() -> String { "CMF Buds 2a".to_string() }
@@ -170,9 +176,9 @@ pub(crate) fn load_settings() -> AppSettings {
     if settings.device_profiles.is_empty() {
         let name = settings.target_device.clone();
         let brand = if name.to_uppercase().contains("CMF") || name.to_uppercase().contains("NOTHING") {
-            "Nothing".to_string()
+            "nothing_cmf".to_string()
         } else {
-            "Generic".to_string()
+            "generic_other".to_string()
         };
         settings.device_profiles = vec![DeviceProfile {
             friendly_name: name.clone(),
@@ -180,6 +186,7 @@ pub(crate) fn load_settings() -> AppSettings {
             protocol_mode: "auto".to_string(),
             battery_interval: settings.battery_interval,
             battery_step: settings.battery_step,
+            mac_address: None,
         }];
         settings.active_device = name;
     }
@@ -501,28 +508,56 @@ fn escape_xml_text(value: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PairedDevice {
+    pub name: String,
+    pub mac: String, // 12-char hex, e.g. "001A7DDA7111"
+}
+
 #[tauri::command]
-async fn get_paired_devices() -> Vec<String> {
+async fn get_paired_devices() -> Vec<PairedDevice> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
+        // Output "FriendlyName|MAC" pairs so we capture both in one pass.
+        // The InstanceId for Bluetooth PnP devices contains DEV_<12-hex-char-MAC>.
+        let script = r#"
+Get-PnpDevice -Class Bluetooth |
+  Where-Object { $_.FriendlyName -notlike '*Enumerator*' -and
+                 $_.FriendlyName -notlike '*Intel*'      -and
+                 $_.FriendlyName -notlike '*RFCOMM*'     -and
+                 $_.FriendlyName -notlike '*Microsoft*'  -and
+                 $_.FriendlyName -notlike '*Transport*'  -and
+                 $_.FriendlyName -notlike '*Adapter*' } |
+  ForEach-Object {
+    $mac = ''
+    if ($_.InstanceId -match 'DEV_([0-9A-Fa-f]{12})') { $mac = $Matches[1] }
+    "$($_.FriendlyName)|$mac"
+  }
+"#;
         let mut command = std::process::Command::new("powershell");
         command.creation_flags(0x08000000);
         let output = command
-            .args([
-                "-NoProfile", "-NonInteractive", "-Command",
-                "Get-PnpDevice -Class Bluetooth | Where-Object FriendlyName -notlike '*Enumerator*' | Where-Object FriendlyName -notlike '*Intel*' | Where-Object FriendlyName -notlike '*RFCOMM*' | Where-Object FriendlyName -notlike '*Microsoft*' | Where-Object FriendlyName -notlike '*Transport*' | Where-Object FriendlyName -notlike '*Adapter*' | Select-Object -ExpandProperty FriendlyName"
-            ])
+            .args(["-NoProfile", "-NonInteractive", "-Command", script])
             .output();
-        
+
         if let Ok(out) = output {
             let s = String::from_utf8_lossy(&out.stdout);
-            let mut devices: Vec<String> = s.lines()
-                .map(|l| l.trim().to_string())
-                .filter(|l| !l.is_empty())
+            let mut seen = std::collections::HashSet::new();
+            let mut devices: Vec<PairedDevice> = s
+                .lines()
+                .filter_map(|l| {
+                    let l = l.trim();
+                    if l.is_empty() { return None; }
+                    let mut parts = l.splitn(2, '|');
+                    let name = parts.next()?.trim().to_string();
+                    let mac  = parts.next().unwrap_or("").trim().to_string();
+                    if name.is_empty() { return None; }
+                    Some(PairedDevice { name, mac })
+                })
+                .filter(|d| seen.insert(d.name.clone()))
                 .collect();
-            devices.sort();
-            devices.dedup();
+            devices.sort_by(|a, b| a.name.cmp(&b.name));
             devices
         } else {
             vec![]
@@ -670,6 +705,9 @@ fn switch_active_profile(name: String, state: tauri::State<'_, TrackerState>) ->
     if let Some(profile) = updated_profile {
         // Reconfigure the running tracker instance
         state.set_device_name(&profile.friendly_name);
+        state.set_mac_address(profile.mac_address.clone());
+        state.set_brand(&profile.brand);
+        state.set_protocol_mode(&profile.protocol_mode);
         state.set_battery_interval_secs(profile.battery_interval);
         state.set_battery_step(profile.battery_step);
         Ok(profile)
@@ -698,6 +736,9 @@ fn save_device_profile(profile: DeviceProfile, state: tauri::State<'_, TrackerSt
 
     if is_active {
         state.set_device_name(&profile.friendly_name);
+        state.set_mac_address(profile.mac_address.clone());
+        state.set_brand(&profile.brand);
+        state.set_protocol_mode(&profile.protocol_mode);
         state.set_battery_interval_secs(profile.battery_interval);
         state.set_battery_step(profile.battery_step);
     }
@@ -992,7 +1033,19 @@ pub fn run() {
         save_settings_to_disk(&settings);
     }
 
-    let tracker = Arc::new(Tracker::new(&initial_device, initial_interval, initial_step));
+    let initial_profile = settings
+        .device_profiles
+        .iter()
+        .find(|p| p.friendly_name == initial_device);
+    let initial_mac = initial_profile.and_then(|p| p.mac_address.clone());
+    let initial_brand = initial_profile
+        .map(|p| p.brand.clone())
+        .unwrap_or_else(|| "generic_other".to_string());
+    let initial_proto = initial_profile
+        .map(|p| p.protocol_mode.clone())
+        .unwrap_or_else(|| "auto".to_string());
+
+    let tracker = Arc::new(Tracker::new(&initial_device, initial_mac, &initial_brand, &initial_proto, initial_interval, initial_step));
 
     // Honour persisted "Enable on Startup" preference and reflect it in the OS registry.
     let initial_startup_enabled = read_startup_enabled_from_disk();
@@ -1046,6 +1099,24 @@ pub fn run() {
             *tracker.on_state_change.lock() = Some(Box::new(move || {
                 let _ = notify_handle.emit("state-changed", ());
             }));
+
+            // Wire protocol discovery → persist the discovered mode back into settings.json
+            // so subsequent connections skip the SPP probe and go straight to the right method.
+            {
+                let tracker_ref = Arc::clone(&tracker);
+                *tracker.on_protocol_discovered.lock() = Some(Box::new(move |discovered: String| {
+                    let dev = tracker_ref.get_device_name();
+                    if dev.is_empty() { return; }
+                    update_settings(|s| {
+                        if let Some(p) = s.device_profiles.iter_mut().find(|p| p.friendly_name == dev) {
+                            if p.protocol_mode == "auto" {
+                                log::info!("Protocol discovered for '{}': {}", dev, discovered);
+                                p.protocol_mode = discovered.clone();
+                            }
+                        }
+                    });
+                }));
+            }
 
             // Start background monitors
             tracker.start(handle.clone());

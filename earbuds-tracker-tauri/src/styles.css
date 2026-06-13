@@ -1693,3 +1693,29 @@ body.font-ndot .analytics-title {
   opacity: 0.85;
 }
 
+/* Custom Dialog Close X Button */
+.dialog-close-x {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: transparent;
+  border: 0;
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  outline: none;
+}
+.dialog-close-x:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+.dialog-close-x:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+

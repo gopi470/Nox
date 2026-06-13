@@ -1,5 +1,75 @@
 import { computeStreak } from './utils.js';
 // main.js – Nox frontend logic
+
+// ─── Protocol Database ─────────────────────────────────────────────────────
+const PROTOCOL_DB = [
+  {
+    key: 'nothing_cmf',
+    brand: 'Nothing / CMF',
+    models: 'CMF Buds 2a, Nothing Ear (2), Nothing Ear (a)',
+    transport: 'SPP / RFCOMM',
+    uuid: 'aeac4a03-dff5-498f-843a-34487cf133eb',
+    status: 'Implemented ✓',
+    statusClass: 'badge-implemented',
+    request: '55 60 01 07 C0 00 00 01 ED C0',
+    response: '55 60 01 01 E0 <len> 00 01 <N> [02 <L%>] [03 <R%>] [04 <C%>] <CRC>',
+    notes: 'CRC-16/IBM (poly 0xA001, init 0xFFFF). Bit 7 of each battery byte = charging flag. device_id: 0x02=Left, 0x03=Right, 0x04=Case.',
+    source: 'Reverse-engineered from ear-web companion app JS',
+  },
+  {
+    key: 'samsung_galaxy',
+    brand: 'Samsung Galaxy Buds',
+    models: 'Galaxy Buds+, Buds Pro, Buds2, Buds2 Pro, Buds3',
+    transport: 'SPP / RFCOMM',
+    uuid: '00001101-0000-1000-8000-00805f9b34fb (standard SPP)',
+    status: 'Implemented ✓',
+    statusClass: 'badge-implemented',
+    request: 'FD 0C 00 2F C1 00 F2',
+    response: 'FD <len> <seq> 2F <payload> <CRC16-CCITT>',
+    notes: 'Preamble: 0xFD. MSG_ID 0x2F = Status request. Response byte 4=Left%, byte 5=Right%, byte 15=Case%. Varies per model.',
+    source: 'GalaxyBudsClient (github.com/timschneeb/GalaxyBudsClient)',
+  },
+  {
+    key: 'sony',
+    brand: 'Sony WH / WF Series',
+    models: 'WH-1000XM4, WH-1000XM5, WF-1000XM4, WF-1000XM5',
+    transport: 'SPP / RFCOMM',
+    uuid: '96CC203E-5068-46ad-B32D-E316F5E069BA',
+    status: 'Implemented ✓',
+    statusClass: 'badge-implemented',
+    request: '0C 03 01 02 01 A4',
+    response: '0C 06 01 02 02 01 <bat%> <charging> <checksum>',
+    notes: 'Start byte: 0x0C. Category 0x02 = Status. Command 0x01 = Get Battery. Response byte 6 = battery %, byte 7 = charging (0/1).',
+    source: 'Community reverse-engineering via Android HCI snoop log analysis',
+  },
+  {
+    key: 'apple_airpods',
+    brand: 'Apple AirPods',
+    models: 'AirPods (all gen), AirPods Pro, AirPods Max',
+    transport: 'BLE Advertisement (no connection needed)',
+    uuid: 'N/A — passive BLE beacon sniffing (Company ID: 0x004C)',
+    status: 'Not implemented',
+    statusClass: 'badge-notimpl',
+    request: 'N/A — passive listen only',
+    response: 'FF 4C 00 07 19 <type> <flags> <left_bat> <right_bat> <case_bat> <charging_mask> ...',
+    notes: 'Manufacturer data broadcast continuously. Battery = nibble × 10 → %. 0x0F = pod not in ear. Charging mask: bit0=L, bit1=R, bit2=Case.',
+    source: 'OpenPods (github.com/adolfintel/OpenPods), FuriousMAC research',
+  },
+  {
+    key: 'bose',
+    brand: 'Bose QuietComfort / Sport',
+    models: 'QC45, QC35 II, Sport Earbuds',
+    transport: 'SPP / RFCOMM (proprietary)',
+    uuid: '00000000-deca-fade-deca-deafdecacaff',
+    status: 'Implemented ✓',
+    statusClass: 'badge-implemented',
+    request: '01 09 02 00 (Bose MAPS protocol)',
+    response: '01 <seq> 04 00 <left%> <right%> <case%> ...',
+    notes: 'Uses the Bose MAPS (Mobile Audio Protocol Suite). Header: 0x01. Battery status command ID: 0x09.',
+    source: 'Community research via Bose app decompilation',
+  },
+];
+
 // Tauri v2 exposes invoke under window.__TAURI__.core, not window.__TAURI__ directly
 const invoke = (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) || (async (cmd, args) => {
   console.log(`[Mock Invoke] ${cmd}`, args);
@@ -796,14 +866,21 @@ function showSwitchProfileWarning(name) {
       dialog.hidden = true;
       cancelBtn.removeEventListener('click', onCancel);
       confirmBtn.removeEventListener('click', onConfirm);
+      window.removeEventListener('keydown', onKeyDown);
       resolve(result);
     };
     
     const onCancel = () => cleanup(false);
     const onConfirm = () => cleanup(true);
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onCancel();
+      }
+    };
     
     cancelBtn.addEventListener('click', onCancel);
     confirmBtn.addEventListener('click', onConfirm);
+    window.addEventListener('keydown', onKeyDown);
     
     dialog.hidden = false;
   });
@@ -974,7 +1051,10 @@ function renderPairedDevicesList(paired) {
     pairedContainer.innerHTML = `<div style="font-size:11px;color:var(--muted);text-align:center;padding:20px;">No paired Bluetooth devices found.</div>`;
   } else {
     displayList.forEach(dev => {
-      const isRecognized = isTargetEarbudDevice(dev);
+      // dev is now { name, mac } from the backend
+      const devName = dev.name || dev; // backward compat guard
+      const devMac  = dev.mac  || '';
+      const isRecognized = isTargetEarbudDevice(devName);
 
       const row = document.createElement('div');
       row.style.display = 'flex';
@@ -985,7 +1065,7 @@ function renderPairedDevicesList(paired) {
       row.style.padding = '8px 12px';
       row.style.borderRadius = '6px';
       
-      // Left side: name + optional badge
+      // Left side: name + optional MAC badge
       const leftWrap = document.createElement('div');
       leftWrap.style.display = 'flex';
       leftWrap.style.alignItems = 'center';
@@ -995,9 +1075,23 @@ function renderPairedDevicesList(paired) {
       nameSpan.style.fontSize = '12px';
       nameSpan.style.fontWeight = '600';
       nameSpan.style.color = isRecognized ? 'var(--text)' : 'var(--muted)';
-      nameSpan.textContent = dev;
+      nameSpan.textContent = devName;
 
       leftWrap.appendChild(nameSpan);
+
+      // Show a tiny MAC badge so users can distinguish two same-named devices
+      if (devMac) {
+        const macBadge = document.createElement('span');
+        const fmt = devMac.match(/.{2}/g)?.join(':') || devMac;
+        macBadge.textContent = fmt;
+        macBadge.title = 'Bluetooth MAC address — uniquely identifies this physical device';
+        macBadge.style.cssText = `
+          font-size: 9px; font-weight: 600; font-family: monospace;
+          color: rgba(255,255,255,0.35); background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; padding: 1px 5px;
+        `;
+        leftWrap.appendChild(macBadge);
+      }
 
       if (!isRecognized) {
         const badge = document.createElement('span');
@@ -1018,10 +1112,10 @@ function renderPairedDevicesList(paired) {
       actionBtn.style.borderColor = 'var(--accent)';
       
       // Count how many paired devices share this name in the full list
-      const pairedWithThisName = displayList.filter(d => d === dev).length;
+      const pairedWithThisName = displayList.filter(d => (d.name || d) === devName).length;
       // Count how many profiles exist for this base name (accounting for " (2)" suffixes)
       const profilesForThisName = deviceProfiles.filter(p =>
-        p.friendly_name === dev || p.friendly_name.replace(/ \(\d+\)$/, '') === dev
+        p.friendly_name === devName || p.friendly_name.replace(/ \(\d+\)$/, '') === devName
       ).length;
       const allSlotsFilled = profilesForThisName >= pairedWithThisName;
 
@@ -1032,7 +1126,7 @@ function renderPairedDevicesList(paired) {
           if (select) {
             // Select the first matching profile for this device name
             const match = deviceProfiles.find(p =>
-              p.friendly_name === dev || p.friendly_name.replace(/ \(\d+\)$/, '') === dev
+              p.friendly_name === devName || p.friendly_name.replace(/ \(\d+\)$/, '') === devName
             );
             if (match) select.value = match.friendly_name;
             select.dispatchEvent(new Event('change'));
@@ -1048,14 +1142,15 @@ function renderPairedDevicesList(paired) {
           const addSelectDevice = document.getElementById('add-profile-select-device');
           if (addSelectDevice) {
             const options = [...addSelectDevice.options];
-            const hasOption = options.some(o => o.value === dev);
+            const hasOption = options.some(o => o.value === devName);
             if (!hasOption) {
               const opt = document.createElement('option');
-              opt.value = dev;
-              opt.textContent = dev;
+              opt.value = devName;
+              opt.textContent = devName;
+              opt.dataset.mac = devMac;
               addSelectDevice.appendChild(opt);
             }
-            addSelectDevice.value = dev;
+            addSelectDevice.value = devName;
             addSelectDevice.dispatchEvent(new Event('change'));
           }
         });
@@ -1096,7 +1191,8 @@ if (btnOpenSetup && setupDialog) {
 async function refreshPairedDevicesList() {
   try {
     const paired = await invoke('get_paired_devices');
-    const filteredPaired = paired.filter(isTargetEarbudDevice);
+    // paired is now [{name, mac}, ...]
+    const filteredPaired = paired.filter(d => isTargetEarbudDevice(d.name));
     
     // 1. Populate the Add tab dropdown select
     const addSelectDevice = document.getElementById('add-profile-select-device');
@@ -1110,24 +1206,24 @@ async function refreshPairedDevicesList() {
 
       // Count how many paired devices have each name
       const pairedNameCount = {};
-      filteredPaired.forEach(dev => { pairedNameCount[dev] = (pairedNameCount[dev] || 0) + 1; });
+      filteredPaired.forEach(d => { pairedNameCount[d.name] = (pairedNameCount[d.name] || 0) + 1; });
       // Count how many profiles exist for each base name
       const profileNameCount = {};
       deviceProfiles.forEach(p => {
-        // Strip auto-suffix like " (2)" to get the base device name
         const base = p.friendly_name.replace(/ \(\d+\)$/, '');
         profileNameCount[base] = (profileNameCount[base] || 0) + 1;
       });
 
-      filteredPaired.forEach(dev => {
+      filteredPaired.forEach(d => {
         const opt = document.createElement('option');
-        opt.value = dev;
-        const slotsFilled = (profileNameCount[dev] || 0) >= (pairedNameCount[dev] || 1);
+        opt.value = d.name;
+        opt.dataset.mac = d.mac || '';
+        const slotsFilled = (profileNameCount[d.name] || 0) >= (pairedNameCount[d.name] || 1);
         if (slotsFilled) {
           opt.disabled = true;
-          opt.textContent = `${dev} (Profile Already Created)`;
+          opt.textContent = `${d.name} (Profile Already Created)`;
         } else {
-          opt.textContent = dev;
+          opt.textContent = d.name;
         }
         addSelectDevice.appendChild(opt);
       });
@@ -1177,28 +1273,48 @@ if (btnCloseSetup && setupDialog) {
   });
 }
 
-function updateEditProfileAutoInfo() {
-  const protocolSelect = document.getElementById('edit-profile-protocol');
-  const brandSelect = document.getElementById('edit-profile-brand');
-  const friendlyNameInput = document.getElementById('edit-profile-friendly-name');
-  const infoContainer = document.getElementById('edit-profile-auto-info');
-  const autoTextSpan = document.getElementById('edit-profile-auto-text');
+// Populate brand dropdowns from PROTOCOL_DB + Generic / Other
+function populateBrandDropdowns() {
+  const selects = [
+    document.getElementById('edit-profile-brand'),
+    document.getElementById('add-profile-brand'),
+  ];
+  selects.forEach(sel => {
+    if (!sel) return;
+    sel.innerHTML = '';
+    PROTOCOL_DB.forEach(entry => {
+      const opt = document.createElement('option');
+      opt.value = entry.key;
+      opt.textContent = entry.brand;
+      sel.appendChild(opt);
+    });
+    const generic = document.createElement('option');
+    generic.value = 'generic_other';
+    generic.textContent = 'Generic / Other';
+    sel.appendChild(generic);
+  });
+}
+populateBrandDropdowns();
 
-  if (!protocolSelect || !brandSelect || !infoContainer || !autoTextSpan) return;
-
-  if (protocolSelect.value === 'auto') {
-    infoContainer.style.display = 'flex';
-    const brand = brandSelect.value;
-    const name = friendlyNameInput ? friendlyNameInput.value : '';
-    const isNothing = brand === 'Nothing' || name.toUpperCase().includes('CMF') || name.toUpperCase().includes('NOTHING');
-    
-    if (isNothing) {
-      autoTextSpan.textContent = 'Currently using: Proprietary RFCOMM (Nothing/CMF)';
-    } else {
-      autoTextSpan.textContent = 'Currently using: Standard GATT BAS';
-    }
+function updateBrandHint(brandKey, statusElId, textElId) {
+  const statusEl = document.getElementById(statusElId);
+  const textEl = document.getElementById(textElId);
+  if (!statusEl || !textEl) return;
+  if (brandKey === 'generic_other') {
+    statusEl.style.display = 'flex';
+    textEl.textContent = 'Generic: will use Standard GATT BAS only (no SPP probe).';
   } else {
-    infoContainer.style.display = 'none';
+    const entry = PROTOCOL_DB.find(e => e.key === brandKey);
+    if (entry) {
+      statusEl.style.display = 'flex';
+      if (entry.status === 'Implemented ✓') {
+        textEl.textContent = `Will try Proprietary RFCOMM (${entry.brand}) first, fall back to GATT on failure.`;
+      } else {
+        textEl.textContent = `Protocol documented but not yet implemented — will probe SPP then fall back to GATT.`;
+      }
+    } else {
+      statusEl.style.display = 'none';
+    }
   }
 }
 
@@ -1210,21 +1326,30 @@ if (profileSelectDropdown) {
     const p = deviceProfiles.find(x => x.friendly_name === selectedName);
     if (p) {
       document.getElementById('edit-profile-friendly-name').value = p.friendly_name;
-      document.getElementById('edit-profile-brand').value = p.brand;
-      document.getElementById('edit-profile-protocol').value = p.protocol_mode;
-      updateEditProfileAutoInfo();
+      document.getElementById('edit-profile-brand').value = p.brand || 'generic_other';
+      updateBrandHint(
+        p.brand || 'generic_other',
+        'edit-profile-proto-status',
+        'edit-profile-proto-text'
+      );
     }
   });
 }
 
-const editProtoEl = document.getElementById('edit-profile-protocol');
-if (editProtoEl) {
-  editProtoEl.addEventListener('change', updateEditProfileAutoInfo);
-}
-
 const editBrandEl = document.getElementById('edit-profile-brand');
 if (editBrandEl) {
-  editBrandEl.addEventListener('change', updateEditProfileAutoInfo);
+  editBrandEl.addEventListener('change', () => {
+    updateBrandHint(editBrandEl.value, 'edit-profile-proto-status', 'edit-profile-proto-text');
+  });
+}
+
+const addBrandEl = document.getElementById('add-profile-brand');
+if (addBrandEl) {
+  addBrandEl.addEventListener('change', () => {
+    updateBrandHint(addBrandEl.value, 'add-profile-proto-hint', 'add-profile-proto-text');
+  });
+  // Show initial hint
+  updateBrandHint(addBrandEl.value, 'add-profile-proto-hint', 'add-profile-proto-text');
 }
 
 function populateProfileSelectDropdown() {
@@ -1300,18 +1425,24 @@ if (btnSaveEditProfile) {
       return;
     }
     const brand = document.getElementById('edit-profile-brand').value;
-    const protocolMode = document.getElementById('edit-profile-protocol').value;
-    
+    // If the brand changed vs what was previously saved, reset protocol_mode to 'auto'
+    // so the first connection re-discovers the correct method.
+    const existing = deviceProfiles.find(x => x.friendly_name === friendlyName);
+    const macAddress = existing ? existing.mac_address : null;
+    const prevBrand = existing ? existing.brand : null;
+    const protocol_mode = (prevBrand && prevBrand !== brand) ? 'auto' : (existing?.protocol_mode || 'auto');
+
     // Read universal settings directly from global settings dropdowns
     const batteryInterval = parseInt(document.getElementById('battery-interval-select').value, 10) || 300;
     const batteryStep = parseInt(document.getElementById('battery-step-select').value, 10) || 5;
-    
+
     const profile = {
       friendly_name: friendlyName,
       brand,
-      protocol_mode: protocolMode,
+      protocol_mode,
       battery_interval: batteryInterval,
-      battery_step: batteryStep
+      battery_step: batteryStep,
+      mac_address: macAddress
     };
     
     try {
@@ -1336,8 +1467,11 @@ if (btnCreateProfile) {
       showNotificationToast("Please select a device.");
       return;
     }
+    // Read the MAC that was stored in the option's dataset when the list was populated
+    const selectedOpt = selectDevice ? [...selectDevice.options].find(o => o.value === friendlyName) : null;
+    const macAddress = (selectedOpt?.dataset?.mac || '').trim() || null;
+
     const brand = document.getElementById('add-profile-brand').value;
-    const protocolMode = document.getElementById('add-profile-protocol').value;
     
     // Read universal settings directly from global settings dropdowns
     const batteryInterval = parseInt(document.getElementById('battery-interval-select').value, 10) || 300;
@@ -1346,9 +1480,10 @@ if (btnCreateProfile) {
     const profile = {
       friendly_name: friendlyName,
       brand,
-      protocol_mode: protocolMode,
+      protocol_mode: 'auto',   // always start fresh — discovery runs on first connection
       battery_interval: batteryInterval,
-      battery_step: batteryStep
+      battery_step: batteryStep,
+      mac_address: macAddress
     };
     
     try {
@@ -3141,6 +3276,15 @@ window.addEventListener('resize', () => {
   }
 });
 
+// Close any open popups/dialogs when Escape key is pressed
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.dialog-overlay').forEach(el => {
+      el.hidden = true;
+    });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ── SESSION BREAKDOWN PAGE ────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -4821,6 +4965,8 @@ function initForceUpdateBtn() {
   });
 }
 
+let toastTimeout = null;
+
 // Simple toast notification helper
 function showNotificationToast(msg) {
   let toast = document.getElementById('force-update-toast');
@@ -4849,8 +4995,92 @@ function showNotificationToast(msg) {
   toast.textContent = msg;
   toast.style.opacity = '1';
   toast.style.transform = 'translateY(0)';
-  setTimeout(() => {
+  
+  if (toastTimeout) {
+    clearTimeout(toastTimeout);
+  }
+  
+  toastTimeout = setTimeout(() => {
     toast.style.opacity = '0';
     toast.style.transform = 'translateY(10px)';
-  }, 3000);
+    toastTimeout = null;
+  }, 5000); // 5 seconds
+}
+
+
+
+function renderProtocolDb() {
+  const container = document.getElementById('protocol-db-content');
+  if (!container) return;
+
+  const badgeStyles = {
+    'badge-implemented': 'background:rgba(52,211,153,0.15);color:#34d399;border:1px solid rgba(52,211,153,0.3);',
+    'badge-notimpl':     'background:rgba(248,113,113,0.12);color:#f87171;border:1px solid rgba(248,113,113,0.3);',
+    'badge-gatt':        'background:rgba(96,165,250,0.12);color:#60a5fa;border:1px solid rgba(96,165,250,0.3);',
+  };
+
+  container.innerHTML = PROTOCOL_DB.map(entry => `
+    <div style="
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
+    ">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+        <span style="font-size:15px; font-weight:700; color:#e2e8f0;">${entry.brand}</span>
+        <span style="font-size:11px; padding:2px 9px; border-radius:99px; ${badgeStyles[entry.statusClass]}">${entry.status}</span>
+        <span style="font-size:11px; color:#64748b; margin-left:auto;">${entry.transport}</span>
+      </div>
+      <div style="font-size:12px; color:#94a3b8; margin-bottom:10px;">
+        <strong style="color:#cbd5e1;">Models:</strong> ${entry.models}
+      </div>
+      <div style="background:rgba(0,0,0,0.25); border-radius:7px; padding:12px; margin-bottom:10px; overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
+          <tr>
+            <td style="color:#64748b; padding:3px 8px 3px 0; white-space:nowrap; vertical-align:top; width:130px;">Service UUID</td>
+            <td style="color:#a5b4fc; font-family:monospace; word-break:break-all;">${entry.uuid}</td>
+          </tr>
+          <tr>
+            <td style="color:#64748b; padding:3px 8px 3px 0; white-space:nowrap; vertical-align:top;">Request Bytes</td>
+            <td style="color:#34d399; font-family:monospace; letter-spacing:1px;">${entry.request}</td>
+          </tr>
+          <tr>
+            <td style="color:#64748b; padding:3px 8px 3px 0; white-space:nowrap; vertical-align:top;">Response Format</td>
+            <td style="color:#fbbf24; font-family:monospace; letter-spacing:1px; word-break:break-all;">${entry.response}</td>
+          </tr>
+        </table>
+      </div>
+      <div style="font-size:11.5px; color:#94a3b8; margin-bottom:6px;">
+        <strong style="color:#cbd5e1;">Notes:</strong> ${entry.notes}
+      </div>
+      <div style="font-size:11px; color:#475569;">
+        <strong style="color:#64748b;">Source:</strong> ${entry.source}
+      </div>
+    </div>
+  `).join('');
+}
+
+const btnProtocolDb = document.getElementById('btn-protocol-db');
+const protocolDbDialog = document.getElementById('protocol-db-dialog');
+const protocolDbClose = document.getElementById('protocol-db-close');
+
+if (btnProtocolDb && protocolDbDialog) {
+  btnProtocolDb.addEventListener('click', () => {
+    renderProtocolDb();
+    protocolDbDialog.hidden = false;
+  });
+}
+
+if (protocolDbClose && protocolDbDialog) {
+  protocolDbClose.addEventListener('click', () => {
+    protocolDbDialog.hidden = true;
+  });
+}
+
+// Close on backdrop click
+if (protocolDbDialog) {
+  protocolDbDialog.addEventListener('click', (e) => {
+    if (e.target === protocolDbDialog) protocolDbDialog.hidden = true;
+  });
 }

@@ -228,17 +228,19 @@ pub struct QueryLogRow {
     pub details: String,
 }
 
-pub fn get_query_log(limit: usize) -> Vec<QueryLogRow> {
+pub fn get_query_log(device_name: &str, limit: usize) -> Vec<QueryLogRow> {
     let db = conn().lock();
     let mut stmt = db
         .prepare(
-            "SELECT id, session_id, session_start, event_ts, action, details
-             FROM query_logs
-             ORDER BY id DESC
-             LIMIT ?1",
+            "SELECT q.id, q.session_id, q.session_start, q.event_ts, q.action, q.details
+             FROM query_logs q
+             INNER JOIN sessions s ON q.session_id = s.id
+             WHERE s.device_name = ?1
+             ORDER BY q.id DESC
+             LIMIT ?2",
         )
         .expect("prepare failed");
-    stmt.query_map(params![limit as i64], |row| {
+    stmt.query_map(params![device_name, limit as i64], |row| {
         Ok(QueryLogRow {
             id: row.get(0)?,
             session_id: row.get(1)?,

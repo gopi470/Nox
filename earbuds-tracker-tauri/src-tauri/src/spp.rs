@@ -20,9 +20,6 @@
 
 use log::{info, warn};
 
-// CMF / Nothing proprietary SPP UUID
-const SPP_UUID: &str = "aeac4a03-dff5-498f-843a-34487cf133eb";
-
 // ── Public battery result ────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
@@ -72,14 +69,15 @@ fn build_battery_request() -> Vec<u8> {
 // The device sends an ACK packet first, then the actual battery data packet.
 // We scan through accumulated bytes looking for a battery frame.
 
-fn try_parse_battery(buf: &[u8]) -> Option<BatteryInfo> {
+// ── Response parsers ──────────────────────────────────────────────────────────
+
+fn try_parse_nothing_cmf(buf: &[u8]) -> Option<BatteryInfo> {
     let mut i = 0;
     while i < buf.len() {
         if buf[i] != 0x55 {
             i += 1;
             continue;
         }
-        // Need at least 10 bytes to inspect header
         if buf.len() - i < 10 {
             break;
         }
@@ -87,18 +85,14 @@ fn try_parse_battery(buf: &[u8]) -> Option<BatteryInfo> {
         let cmd = u16::from_le_bytes([frame[3], frame[4]]);
         let payload_len = frame[5] as usize;
 
-        info!("SPP: frame at offset {} cmd=0x{:04X} payload_len={}", i, cmd, payload_len);
-
-        // Battery response commands: 0xE001 (57345) or 0x4007 (16391)
         if cmd != 57345 && cmd != 16391 {
-            i += 1; // not a battery frame — skip
+            i += 1;
             continue;
         }
 
-        // Ensure the full payload is present
-        let total_len = 8 + payload_len + 2; // header(8) + payload + crc(2)
+        let total_len = 8 + payload_len + 2;
         if frame.len() < total_len.max(11) {
-            break; // need more data
+            break;
         }
 
         let num_devices = frame[8] as usize;
@@ -116,16 +110,202 @@ fn try_parse_battery(buf: &[u8]) -> Option<BatteryInfo> {
                 0x02 => { info.left  = Some(level); info.left_charging  = charging; }
                 0x03 => { info.right = Some(level); info.right_charging = charging; }
                 0x04 => { info.case  = Some(level); info.case_charging  = charging; }
-                _    => { warn!("SPP: unknown device_id 0x{:02X}", device_id); }
+                _    => {}
             }
         }
-        info!("SPP: battery parsed ✓ {:?}", info);
+        info.updated_at = Some(chrono::Local::now().timestamp_millis() as u64);
         return Some(info);
     }
     None
 }
 
+fn try_parse_samsung_galaxy(buf: &[u8]) -> Option<BatteryInfo> {
+    let mut i = 0;
+    while i < buf.len() {
+        if buf[i] != 0xFD {
+            i += 1;
+            continue;
+        }
+        if buf.len() - i < 10 {
+            break;
+        }
+        let frame = &buf[i..];
+        let payload_len = frame[1] as usize;
+        let cmd = frame[3];
+
+        if cmd != 0x2F && cmd != 0x61 && cmd != 0x30 && cmd != 0x0C {
+            i += 1;
+            continue;
+        }
+
+        let total_len = 2 + payload_len + 2;
+        if frame.len() < total_len {
+            break;
+        }
+
+        let left = frame[4];
+        let right = frame[5];
+        
+        let case = if payload_len >= 9 {
+            let val = frame[8];
+            if val <= 100 { Some(val) } else { None }
+        } else {
+            None
+        };
+
+        let mut left_charging = false;
+        let mut right_charging = false;
+        let mut case_charging = false;
+        if payload_len >= 10 {
+            let charging_byte = frame[9];
+            left_charging = (charging_byte & 0x01) != 0;
+            right_charging = (charging_byte & 0x02) != 0;
+            case_charging = (charging_byte & 0x04) != 0;
+        }
+
+        if left <= 100 || right <= 100 {
+            return Some(BatteryInfo {
+                left: if left <= 100 { Some(left) } else { None },
+                right: if right <= 100 { Some(right) } else { None },
+                case,
+                left_charging,
+                right_charging,
+                case_charging,
+                updated_at: Some(chrono::Local::now().timestamp_millis() as u64),
+            });
+        }
+        i += 1;
+    }
+    None
+}
+
+fn try_parse_sony(buf: &[u8]) -> Option<BatteryInfo> {
+    let mut i = 0;
+    while i < buf.len() {
+        if buf[i] != 0x0C {
+            i += 1;
+            continue;
+        }
+        if buf.len() - i < 8 {
+            break;
+        }
+        let frame = &buf[i..];
+        let payload_len = frame[1] as usize;
+        
+        let total_len = 2 + payload_len + 1;
+        if frame.len() < total_len {
+            break;
+        }
+
+        let battery_val = frame[6];
+        let charging_val = frame[7];
+        let is_charging = charging_val == 0x01 || charging_val == 0x03;
+
+        if battery_val <= 100 {
+            return Some(BatteryInfo {
+                left: Some(battery_val),
+                right: Some(battery_val),
+                case: None,
+                left_charging: is_charging,
+                right_charging: is_charging,
+                case_charging: false,
+                updated_at: Some(chrono::Local::now().timestamp_millis() as u64),
+            });
+        }
+        i += 1;
+    }
+    None
+}
+
+fn try_parse_bose(buf: &[u8]) -> Option<BatteryInfo> {
+    let mut i = 0;
+    while i < buf.len() {
+        if buf[i] != 0x01 {
+            i += 1;
+            continue;
+        }
+        if buf.len() - i < 7 {
+            break;
+        }
+        let frame = &buf[i..];
+        let cmd = frame[3];
+        if cmd != 0x09 {
+            i += 1;
+            continue;
+        }
+
+        let left = frame[4];
+        let right = frame[5];
+        let case = frame[6];
+
+        if left <= 100 || right <= 100 {
+            return Some(BatteryInfo {
+                left: if left <= 100 { Some(left) } else { None },
+                right: if right <= 100 { Some(right) } else { None },
+                case: if case <= 100 { Some(case) } else { None },
+                left_charging: false,
+                right_charging: false,
+                case_charging: false,
+                updated_at: Some(chrono::Local::now().timestamp_millis() as u64),
+            });
+        }
+        i += 1;
+    }
+    None
+}
+
+fn parse_spp_response(brand: &str, buf: &[u8]) -> Option<BatteryInfo> {
+    match brand {
+        "nothing_cmf" => try_parse_nothing_cmf(buf),
+        "samsung_galaxy" => try_parse_samsung_galaxy(buf),
+        "sony" => try_parse_sony(buf),
+        "bose" => try_parse_bose(buf),
+        _ => None,
+    }
+}
+
+fn get_brand_spp_config(brand: &str) -> Option<(&'static str, Vec<u8>)> {
+    match brand {
+        "nothing_cmf" => {
+            Some((
+                "aeac4a03-dff5-498f-843a-34487cf133eb",
+                build_battery_request()
+            ))
+        }
+        "samsung_galaxy" => {
+            Some((
+                "00001101-0000-1000-8000-00805f9b34fb",
+                vec![0xFD, 0x0C, 0x00, 0x2F, 0xC1, 0x00, 0xF2]
+            ))
+        }
+        "sony" => {
+            Some((
+                "96cc203e-5068-46ad-b32d-e316f5e069ba",
+                vec![0x0C, 0x03, 0x01, 0x02, 0x01, 0xA4]
+            ))
+        }
+        "bose" => {
+            Some((
+                "00000000-deca-fade-deca-deafdecacaff",
+                vec![0x01, 0x09, 0x02, 0x00]
+            ))
+        }
+        _ => None,
+    }
+}
+
 // ── Device MAC discovery ─────────────────────────────────────────────────────
+
+/// Parse a MAC address string in any common format ("AA:BB:CC:DD:EE:FF",
+/// "AA-BB-CC-DD-EE-FF", or "AABBCCDDEEFF") into a raw u64 Bluetooth address.
+fn parse_mac_str(s: &str) -> Option<u64> {
+    let clean: String = s.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+    if clean.len() == 12 {
+        u64::from_str_radix(&clean, 16).ok()
+    } else {
+        None
+    }
+}
 
 #[cfg(target_os = "windows")]
 fn find_device_mac(device_name: &str) -> Option<u64> {
@@ -157,10 +337,10 @@ fn find_device_mac(_device_name: &str) -> Option<u64> { None }
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
-/// Connect to the CMF Buds 2a via WinRT RFCOMM, send a battery request,
-/// collect the response, and return parsed battery levels.
+/// Inner function: given a resolved Bluetooth MAC address, connect via WinRT
+/// RFCOMM, query using the brand-specific payload/UUID, and parse using the brand-specific parser.
 #[cfg(target_os = "windows")]
-fn read_battery_spp(device_name: &str) -> Option<BatteryInfo> {
+fn attempt_spp_query(mac: u64, device_name: &str, brand: &str) -> Option<BatteryInfo> {
     use windows::{
         Devices::Bluetooth::BluetoothDevice,
         Devices::Bluetooth::Rfcomm::RfcommServiceId,
@@ -169,33 +349,39 @@ fn read_battery_spp(device_name: &str) -> Option<BatteryInfo> {
         core::GUID,
     };
 
-    let mac = find_device_mac(device_name)?;
-    info!("SPP: found MAC {:012X} for \"{}\"", mac, device_name);
+    let (uuid_str, packet) = match get_brand_spp_config(brand) {
+        Some(cfg) => cfg,
+        None => {
+            warn!("SPP: brand '{}' has no SPP configuration", brand);
+            return None;
+        }
+    };
 
     // Get BluetoothDevice by MAC address
     let bt_device = match BluetoothDevice::FromBluetoothAddressAsync(mac)
         .and_then(|op| op.get())
     {
         Ok(d) => d,
-        Err(e) => { warn!("SPP: BluetoothDevice lookup failed: {e}"); return None; }
+        Err(e) => { warn!("SPP: BluetoothDevice lookup failed for {:012X}: {e}", mac); return None; }
     };
 
-    info!("SPP: device \"{}\" status={:?}", 
-          bt_device.Name().unwrap_or_default(), 
-          bt_device.ConnectionStatus());
+    info!("SPP: device \"{}\" status={:?} brand={}",
+          bt_device.Name().unwrap_or_default(),
+          bt_device.ConnectionStatus(),
+          brand);
 
     // Get RFCOMM service by custom UUID
-    let uuid = GUID::from(SPP_UUID);
+    let uuid = GUID::from(uuid_str);
     let svc_id = match RfcommServiceId::FromUuid(uuid) {
         Ok(s) => s,
-        Err(e) => { warn!("SPP: RfcommServiceId failed: {e}"); return None; }
+        Err(e) => { warn!("SPP: RfcommServiceId failed for {uuid_str}: {e}"); return None; }
     };
 
     let result = match bt_device.GetRfcommServicesForIdAsync(&svc_id)
         .and_then(|op| op.get())
     {
         Ok(r) => r,
-        Err(e) => { warn!("SPP: GetRfcommServicesForId failed: {e}"); return None; }
+        Err(e) => { warn!("SPP: GetRfcommServicesForId failed for {uuid_str}: {e}"); return None; }
     };
 
     let services = match result.Services() {
@@ -204,7 +390,7 @@ fn read_battery_spp(device_name: &str) -> Option<BatteryInfo> {
     };
 
     if services.Size().unwrap_or(0) == 0 {
-        warn!("SPP: no RFCOMM service found for UUID {SPP_UUID}");
+        warn!("SPP: no RFCOMM service found for UUID {uuid_str}");
         return None;
     }
 
@@ -213,7 +399,7 @@ fn read_battery_spp(device_name: &str) -> Option<BatteryInfo> {
         Err(e) => { warn!("SPP: GetAt(0) failed: {e}"); return None; }
     };
 
-    info!("SPP: connecting to RFCOMM service…");
+    info!("SPP: connecting to RFCOMM service for {brand}…");
 
     // Connect StreamSocket
     let socket = match StreamSocket::new() {
@@ -231,17 +417,16 @@ fn read_battery_spp(device_name: &str) -> Option<BatteryInfo> {
     };
 
     if let Err(e) = socket.ConnectAsync(&host, &service_name).and_then(|op| op.get()) {
-        warn!("SPP: socket connect failed: {e}");
+        warn!("SPP: socket connect failed for {brand}: {e}");
         return None;
     }
 
-    info!("SPP: socket connected!");
+    info!("SPP: socket connected for {brand}!");
 
     // Brief settle before writing
     std::thread::sleep(std::time::Duration::from_millis(300));
 
     // Send battery request
-    let packet = build_battery_request();
     let output_stream = match socket.OutputStream() {
         Ok(s) => s,
         Err(e) => { warn!("SPP: OutputStream failed: {e}"); return None; }
@@ -261,7 +446,7 @@ fn read_battery_spp(device_name: &str) -> Option<BatteryInfo> {
     }
     let _ = writer.DetachStream();
 
-    info!("SPP: sent battery request {:02X?}", packet);
+    info!("SPP: sent battery request {:02X?} for {brand}", packet);
 
     // Read response — collect for up to 3 seconds
     let input_stream = match socket.InputStream() {
@@ -295,7 +480,7 @@ fn read_battery_spp(device_name: &str) -> Option<BatteryInfo> {
             info!("SPP: read {} bytes: {:02X?}", buf.len(), buf);
             all_bytes.extend_from_slice(&buf);
 
-            if let Some(info) = try_parse_battery(&all_bytes) {
+            if let Some(info) = parse_spp_response(brand, &all_bytes) {
                 let _ = socket.Close();
                 return Some(info);
             }
@@ -305,7 +490,64 @@ fn read_battery_spp(device_name: &str) -> Option<BatteryInfo> {
     }
 
     let _ = socket.Close();
-    warn!("SPP: no battery response. Raw received: {:02X?}", all_bytes);
+    warn!("SPP: no battery response from {:012X} ({}). Raw: {:02X?}", mac, device_name, all_bytes);
+    None
+}
+
+/// Attempt SPP battery query.
+/// Resolution order:
+///   1. Parse `mac_hint` if provided and non-empty.
+///   2. Fall back to discovering the MAC via friendly-name PowerShell query.
+///   3. If the first attempt fails AND we originally had a hint, try once more
+///      with the freshly discovered MAC (handles stale stored MACs).
+#[cfg(target_os = "windows")]
+fn read_battery_spp(device_name: &str, mac_hint: Option<&str>, brand: &str) -> Option<BatteryInfo> {
+    // AirPods does not support SPP (BLE only)
+    if brand == "apple_airpods" {
+        return None;
+    }
+
+    // Resolve a MAC to try first
+    let hinted_mac = mac_hint.and_then(|s| {
+        let m = parse_mac_str(s);
+        if m.is_none() && !s.trim().is_empty() {
+            warn!("SPP: stored mac_address '{}' is not a valid MAC — falling back to name lookup", s);
+        }
+        m
+    });
+
+    let primary_mac = match hinted_mac {
+        Some(m) => {
+            info!("SPP: using stored MAC {:012X} for \"{}\"", m, device_name);
+            m
+        }
+        None => {
+            // No valid hint — discover by name
+            let m = find_device_mac(device_name)?;
+            info!("SPP: discovered MAC {:012X} for \"{}\" by friendly name", m, device_name);
+            m
+        }
+    };
+
+    // First attempt
+    if let Some(info) = attempt_spp_query(primary_mac, device_name, brand) {
+        return Some(info);
+    }
+
+    // If we used a stored hint and it failed, try discovering fresh via name
+    if hinted_mac.is_some() {
+        warn!("SPP: stored MAC {:012X} failed — retrying via friendly-name lookup", primary_mac);
+        if let Some(fallback_mac) = find_device_mac(device_name) {
+            if fallback_mac != primary_mac {
+                info!("SPP: fallback MAC {:012X} differs — retrying", fallback_mac);
+                return attempt_spp_query(fallback_mac, device_name, brand);
+            } else {
+                // Same MAC, no point retrying
+                return attempt_spp_query(fallback_mac, device_name, brand);
+            }
+        }
+    }
+
     None
 }
 
@@ -346,20 +588,47 @@ fn read_battery_pnp(device_name: &str) -> Option<BatteryInfo> {
     }
 }
 
+/// Public entry point for battery reading.
+/// `brand`: profile brand key — e.g. "nothing_cmf", "samsung_galaxy", "generic_other".
+/// `mac_address`: optional stored MAC from the device profile.
+/// `protocol_mode`: current persisted mode ("auto", "proprietary", "standard").
+///
+/// Returns `(Option<BatteryInfo>, &'static str)` — the second value is the *effective* method
+/// used ("proprietary" | "standard"). The caller should persist this to skip re-discovery.
 #[cfg(target_os = "windows")]
-pub fn read_battery(device_name: &str) -> Option<BatteryInfo> {
-    let name_upper = device_name.to_uppercase();
-    let is_nothing = name_upper.contains("CMF") || name_upper.contains("NOTHING");
-    
-    if is_nothing {
-        if let Some(info) = read_battery_spp(device_name) {
-            return Some(info);
-        }
+pub fn read_battery(
+    device_name: &str,
+    mac_address: Option<&str>,
+    brand: &str,
+    protocol_mode: &str,
+) -> (Option<BatteryInfo>, &'static str) {
+    // Generic / Other / AirPods — PnP only, never attempt SPP
+    if brand == "generic_other" || brand == "apple_airpods" {
+        return (read_battery_pnp(device_name), "standard");
     }
-    
-    // Fallback to standard PnP / GATT BAS
-    read_battery_pnp(device_name)
+
+    // Already discovered in a previous session — skip rediscovery
+    if protocol_mode == "proprietary" {
+        return (read_battery_spp(device_name, mac_address, brand), "proprietary");
+    }
+    if protocol_mode == "standard" {
+        return (read_battery_pnp(device_name), "standard");
+    }
+
+    // protocol_mode == "auto": first-time discovery — try SPP for any DB brand.
+    if let Some(info) = read_battery_spp(device_name, mac_address, brand) {
+        return (Some(info), "proprietary");
+    }
+    (read_battery_pnp(device_name), "standard")
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn read_battery(_device_name: &str) -> Option<BatteryInfo> { None }
+pub fn read_battery(
+    _device_name: &str,
+    _mac_address: Option<&str>,
+    _brand: &str,
+    _protocol_mode: &str,
+) -> (Option<BatteryInfo>, &'static str) {
+    (None, "standard")
+}
+

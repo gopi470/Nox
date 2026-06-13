@@ -1,5 +1,5 @@
 // tracker.rs – Core session state machine (mirrors tracker.py)
-use chrono::{Local, NaiveDate, NaiveDateTime};
+use chrono::{Local, NaiveDateTime};
 use std::time::{SystemTime, UNIX_EPOCH};
 use log::info;
 use parking_lot::Mutex;
@@ -42,6 +42,9 @@ use parking_lot::RwLock;
 
 pub struct Tracker {
     device_name: Arc<RwLock<String>>,
+    mac_address: Arc<RwLock<Option<String>>>,
+    protocol_mode: Arc<RwLock<String>>,
+    brand: Arc<RwLock<String>>,
     battery_interval_secs: Arc<RwLock<u64>>,
     battery_step: Arc<RwLock<u8>>,
     bt: Arc<BluetoothMonitor>,
@@ -51,6 +54,8 @@ pub struct Tracker {
     pub battery_cache: Arc<Mutex<Option<crate::spp::BatteryInfo>>>,
     // Callback invoked on any state change (set by Tauri main)
     pub on_state_change: Arc<Mutex<Option<Box<dyn Fn() + Send + 'static>>>>,
+    // Callback invoked when first-try protocol discovery completes — arg is "proprietary" or "standard"
+    pub on_protocol_discovered: Arc<Mutex<Option<Box<dyn Fn(String) + Send + 'static>>>>,
 }
 
 fn round_to_step(val: u8, step: u8) -> u8 {
@@ -81,10 +86,13 @@ fn merge_battery_reading(
 }
 
 impl Tracker {
-    pub fn new(device_name: &str, battery_interval_secs: u64, battery_step: u8) -> Self {
+    pub fn new(device_name: &str, mac_address: Option<String>, brand: &str, protocol_mode: &str, battery_interval_secs: u64, battery_step: u8) -> Self {
         let dev_name = Arc::new(RwLock::new(device_name.to_string()));
         Self {
             device_name: dev_name.clone(),
+            mac_address: Arc::new(RwLock::new(mac_address)),
+            protocol_mode: Arc::new(RwLock::new(protocol_mode.to_string())),
+            brand: Arc::new(RwLock::new(brand.to_string())),
             battery_interval_secs: Arc::new(RwLock::new(battery_interval_secs)),
             battery_step: Arc::new(RwLock::new(battery_step)),
             bt: Arc::new(BluetoothMonitor::new(dev_name.clone())),
@@ -93,6 +101,7 @@ impl Tracker {
             inner: Arc::new(Mutex::new(Inner { session: None })),
             battery_cache: Arc::new(Mutex::new(None)),
             on_state_change: Arc::new(Mutex::new(None)),
+            on_protocol_discovered: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -102,6 +111,30 @@ impl Tracker {
 
     pub fn get_device_name(&self) -> String {
         self.device_name.read().clone()
+    }
+
+    pub fn set_mac_address(&self, new_mac: Option<String>) {
+        *self.mac_address.write() = new_mac;
+    }
+
+    pub fn get_mac_address(&self) -> Option<String> {
+        self.mac_address.read().clone()
+    }
+
+    pub fn set_protocol_mode(&self, new_mode: &str) {
+        *self.protocol_mode.write() = new_mode.to_string();
+    }
+
+    pub fn get_protocol_mode(&self) -> String {
+        self.protocol_mode.read().clone()
+    }
+
+    pub fn set_brand(&self, new_brand: &str) {
+        *self.brand.write() = new_brand.to_string();
+    }
+
+    pub fn get_brand(&self) -> String {
+        self.brand.read().clone()
     }
 
     pub fn get_active_session_id(&self) -> Option<i64> {
@@ -126,6 +159,9 @@ impl Tracker {
 
     pub fn force_query_battery(&self) -> Option<crate::spp::BatteryInfo> {
         let dev = self.get_device_name();
+        let mac = self.get_mac_address();
+        let brand = self.get_brand();
+        let protocol = self.get_protocol_mode();
         if dev.is_empty() {
             return None;
         }
@@ -134,7 +170,15 @@ impl Tracker {
             format!("Polling {}", dev),
         );
         let previous_bat = self.battery_cache.lock().clone();
-        if let Some(mut bat) = crate::spp::read_battery(&dev) {
+        let (bat_opt, effective_mode) = crate::spp::read_battery(&dev, mac.as_deref(), &brand, &protocol);
+        // If auto-discovery just ran, persist the discovered method
+        if protocol == "auto" {
+            self.set_protocol_mode(effective_mode);
+            if let Some(ref cb) = *self.on_protocol_discovered.lock() {
+                cb(effective_mode.to_string());
+            }
+        }
+        if let Some(mut bat) = bat_opt {
             bat = merge_battery_reading(previous_bat, bat);
             let step = self.get_battery_step();
             if step > 1 {
@@ -190,7 +234,8 @@ impl Tracker {
     }
 
     pub fn get_query_log(&self) -> Vec<db::QueryLogRow> {
-        db::get_query_log(200)
+        let dev = self.get_device_name();
+        db::get_query_log(&dev, 200)
     }
 
     pub fn start(self: &Arc<Self>, app_handle: tauri::AppHandle) {
@@ -248,10 +293,8 @@ impl Tracker {
         let inner_disc = Arc::clone(&self.inner);
         let notify_disc = Arc::clone(&self.on_state_change);
         let dev_name_lock      = Arc::clone(&self.device_name);
-        let dev_name_lock_disc = Arc::clone(&self.device_name);
 
         let app_handle_conn = app_handle.clone();
-        let app_handle_disc = app_handle.clone();
         let tracker_conn = Arc::clone(self);
         let tracker_disc = Arc::clone(self);
 
@@ -276,7 +319,6 @@ impl Tracker {
 
                 // Start background battery polling loop
                 {
-                    let dev_for_bat = current_dev.clone();
                     let cache_clone = Arc::clone(&tracker_conn.battery_cache);
                     let bt_clone = Arc::clone(&tracker_conn.bt);
                     let on_change_clone = Arc::clone(&tracker_conn.on_state_change);
@@ -286,11 +328,28 @@ impl Tracker {
                         std::thread::sleep(Duration::from_secs(2));
                         while bt_clone.is_connected() {
                             let previous_bat = cache_clone.lock().clone();
+                            let current_dev = tracker_clone.get_device_name();
+                            let current_mac = tracker_clone.get_mac_address();
+                            let current_brand = tracker_clone.get_brand();
+                            let current_proto = tracker_clone.get_protocol_mode();
                             tracker_clone.record_query_log(
                                 "Battery query sent",
-                                format!("Polling {}", dev_for_bat),
+                                format!("Polling {}", current_dev),
                             );
-                            if let Some(mut bat) = crate::spp::read_battery(&dev_for_bat) {
+                            let (bat_opt, effective_mode) = crate::spp::read_battery(
+                                &current_dev,
+                                current_mac.as_deref(),
+                                &current_brand,
+                                &current_proto,
+                            );
+                            // First-try discovery: persist the working method to the profile
+                            if current_proto == "auto" {
+                                tracker_clone.set_protocol_mode(effective_mode);
+                                if let Some(ref cb) = *tracker_clone.on_protocol_discovered.lock() {
+                                    cb(effective_mode.to_string());
+                                }
+                            }
+                            if let Some(mut bat) = bat_opt {
                                 bat = merge_battery_reading(previous_bat, bat);
                                 let step = tracker_clone.get_battery_step();
                                 if step > 1 {
