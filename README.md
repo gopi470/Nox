@@ -16,29 +16,6 @@ If you want to install Nox without building it yourself, download the latest Win
 
 On the release page, look in the **Assets** section for a `.msi` or `.exe` installer if one is published for your platform.
 
-### Option 2: Build and install locally
-
-If you want to compile the app yourself:
-
-1. Install the prerequisites:
-   - Windows 10 or Windows 11
-   - Node.js
-   - Rust and Cargo
-
-2. Clone the repository:
-   ```bash
-   git clone https://github.com/gopi470/EarBuds-Tracker.git
-   cd EarBuds-Tracker/earbuds-tracker-tauri
-   ```
-
-3. Install dependencies and build:
-   ```bash
-   npm install
-   npm run tauri build
-   ```
-
-4. After the build finishes, look in the Tauri output folder for the generated installer or package. The exact path depends on the target format you build, but it is typically under `src-tauri/target/release/bundle/`.
-
 ---
 ## Note
 ## Note
@@ -67,11 +44,16 @@ If you want to compile the app yourself:
   - **Animated Equalizer**: Animates when media is active.
   - **Daily Streaks**: Calculates consecutive active listening days.
   - **7-Day Bar Chart**: Renders daily usage comparison on a custom-drawn canvas chart.
+* **Advanced Battery Analytics & Charting**:
+  - **Interactive Battery Drain Chart**: Renders session battery level graphs with dynamic grid normalization.
+  - **Date-Aware Bin-Packing Pagination**: Automatically packs sessions into pages without splitting date groups across pages, keeping date clusters contiguous.
+  - **Interactive Hover Guides**: Hovering over date group brackets projects clean dashed layout lines that isolate and highlight that specific date's points on the graph.
+  - **Adjustable Page Limits**: Tune pagination limits for Grouped Similar (default 12, max 15) and All Sessions (default 20, max 24) views independently.
 * **Session Breakdown**:
   - **Historical Directory**: Scrollable lists of past sessions formatted with monospaced character columns for perfect alignment.
   - **Usage Detail Panels**: View specific connection stats, app usage duration breakdown, notes editor, and canvas-based battery drain charts.
   - **Export Formats**: Download session summaries and app usage data in CSV or JSON.
-* **Configurable Settings**: Custom playback goals, target device name mapping (with automatic paired-device discovery), desktop notification toggles, and adjustable battery polling intervals (from 30 seconds to 30 minutes).
+* **Configurable Settings**: Custom playback goals, target device name mapping (with automatic paired-device discovery), desktop notification toggles, adjustable battery polling intervals (from 30 seconds to 30 minutes), and customizable graph pagination limits.
 * **Secure Data Purging**: Requires Windows account password authorization (via Windows Logon APIs) before allowing database resets.
 * **Resource Efficient**: Auto-runs in the background and automatically shuts down 5 seconds after earbud disconnection (unless the dashboard window is active).
 
@@ -128,64 +110,30 @@ The Rust backend is registered to start automatically on Windows login (via Taur
 
 ---
 
-## Installation & Setup
-
+## Developer Installation & Setup
 
 ### Prerequisites
 1. **Windows 10 / 11**
-2. **Node.js** (for Tauri frontend tooling) & **Rust/Cargo toolchain** (for building the Rust backend)
+2. **Node.js** (for Tauri frontend tooling)
+3. **Rust and Cargo** toolchain
 
-### Build / Run (Developer)
+### Build & Run
 1. Clone the repository:
    ```bash
    git clone https://github.com/gopi470/EarBuds-Tracker.git
    cd EarBuds-Tracker
    ```
-
-2. Build & run the Tauri app:
+2. Navigate to the Tauri project directory, install dependencies, and start development mode:
    ```bash
    cd earbuds-tracker-tauri
    npm install
    npm run tauri dev
    ```
-
-### Production Build
-From the Tauri folder:
-```bash
-cd earbuds-tracker-tauri
-npm run tauri build
-```
-
----
-
-### Developer Installation
-
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/gopi470/EarBuds-Tracker.git
-   cd EarBuds-Tracker
-   ```
-
-2. **Navigate to the Tauri project:**
-   ```bash
-   cd earbuds-tracker-tauri
-   ```
-
-3. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-
-4. **Run the application in development mode:**
-   ```bash
-   npm run tauri dev
-   ```
-
-5. **Build for production:**
+3. To compile a production build:
    ```bash
    npm run tauri build
    ```
+   After the build finishes, look in the Tauri output folder for the generated installer or package. The exact path depends on the target format you build, but it is typically under `src-tauri/target/release/bundle/`.
 
 ---
 
