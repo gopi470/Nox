@@ -272,7 +272,6 @@ impl Tracker {
                 info!("Session opened id={id}");
                 call_notify(&notify_conn);
                 let current_dev = dev_name_lock.read().clone();
-                run_event_script("connect", &current_dev);
                 schedule_live_write(Arc::clone(&inner_conn));
 
                 // Start background battery polling loop
@@ -351,7 +350,6 @@ impl Tracker {
                 let mut g = inner_disc.lock();
                 finalise_session(&mut g);
                 call_notify(&notify_disc);
-                run_event_script("disconnect", "");
 
                 // Autopause on disconnect logic
                 if crate::load_settings().autopause_enabled {
@@ -489,33 +487,7 @@ fn schedule_live_write(inner: Arc<Mutex<Inner>>) {
     });
 }
 
-fn run_event_script(event_type: &str, _device: &str) {
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_default();
-    let parent = exe_dir.parent().unwrap_or(&exe_dir).to_path_buf();
 
-    let script_name = format!("on_{event_type}");
-    let exts = [".bat", ".cmd", ".ps1"];
-
-    for dir in [&parent, &exe_dir] {
-        for ext in &exts {
-            let path = dir.join(format!("{script_name}{ext}"));
-            if path.exists() {
-                info!("Running {event_type} script: {}", path.display());
-                let mut cmd = std::process::Command::new("cmd");
-                #[cfg(target_os = "windows")]
-                {
-                    use std::os::windows::process::CommandExt;
-                    cmd.creation_flags(0x08000000);
-                }
-                cmd.args(["/C", &path.to_string_lossy()]).spawn().ok();
-                return;
-            }
-        }
-    }
-}
 
 // Need this for month.with_day()
 use chrono::Datelike;
