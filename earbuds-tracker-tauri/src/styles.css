@@ -1401,3 +1401,14 @@ body.font-ndot .analytics-title {
   flex-grow: 1;
 }
 
+.about-link {
+  color: var(--accent, #6366f1);
+  text-decoration: none;
+  font-weight: 500;
+  transition: opacity 0.15s ease;
+}
+.about-link:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
