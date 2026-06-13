@@ -1,4 +1,4 @@
-# Earbuds-Tracker
+# Nox
 
 A hybrid background tracking utility and desktop dashboard for monitoring Bluetooth earbuds connection time, active media playback duration, and battery levels on Windows. 
 
@@ -8,16 +8,13 @@ Designed for **Nothing** and **CMF** earbuds, with development and testing prima
 
 ## Installation
 
-### Option 1: Download a prebuilt installer
+Download the latest Windows installer from:
 
-If you want to install Nox without building it yourself, download the latest Windows installer from:
+- [Latest GitHub Release](https://github.com/gopi470/Nox/releases/latest)
 
-- [Latest GitHub Release](https://github.com/gopi470/EarBuds-Tracker/releases/latest)
-
-On the release page, look in the **Assets** section for a `.msi` or `.exe` installer if one is published for your platform.
+On the release page, look in the **Assets** section for the `.msi` or `.exe` installer.
 
 ---
-## Note
 ## Note
 
 > Nox is currently distributed as an unsigned Windows application.
@@ -34,28 +31,18 @@ On the release page, look in the **Assets** section for a `.msi` or `.exe` insta
 
 ## Key Features
 
-* **Real-time Battery Tracking**: Queries battery percentage (Left earbud, Right earbud, and Charging Case) and charging states using a custom implementation of the Serial Port Profile (SPP) protocol.
-  - **Live UI Indicators**: Displays battery levels with animated charging status bars and interactive detail states.
-  - **Last Known State Cache**: Automatically persists battery states so that the dashboard shows disconnected earbuds' last-known levels.
-* **Active Playback Monitoring**: Polls Windows WASAPI session peak meters to measure the exact time audio is playing through the earbuds, utilizing a 5-second silence grace filter to prevent flicker.
-* **Presence Detection**: Utilizes WASAPI and Windows MMDevice PnP presence monitoring to accurately detect Bluetooth connections.
-* **Interactive Dashboard**:
-  - **Dynamic Dual-Ring Canvas**: Shows daily connection (outer ring) and media playback (inner ring) compared to a daily goal.
-  - **Animated Equalizer**: Animates when media is active.
-  - **Daily Streaks**: Calculates consecutive active listening days.
-  - **7-Day Bar Chart**: Renders daily usage comparison on a custom-drawn canvas chart.
-* **Advanced Battery Analytics & Charting**:
-  - **Interactive Battery Drain Chart**: Renders session battery level graphs with dynamic grid normalization.
-  - **Date-Aware Bin-Packing Pagination**: Automatically packs sessions into pages without splitting date groups across pages, keeping date clusters contiguous.
-  - **Interactive Hover Guides**: Hovering over date group brackets projects clean dashed layout lines that isolate and highlight that specific date's points on the graph.
-  - **Adjustable Page Limits**: Tune pagination limits for Grouped Similar (default 12, max 15) and All Sessions (default 20, max 24) views independently.
-* **Session Breakdown**:
-  - **Historical Directory**: Scrollable lists of past sessions formatted with monospaced character columns for perfect alignment.
-  - **Usage Detail Panels**: View specific connection stats, app usage duration breakdown, notes editor, and canvas-based battery drain charts.
-  - **Export Formats**: Download session summaries and app usage data in CSV or JSON.
-* **Configurable Settings**: Custom playback goals, target device name mapping (with automatic paired-device discovery), desktop notification toggles, adjustable battery polling intervals (from 30 seconds to 30 minutes), and customizable graph pagination limits.
-* **Secure Data Purging**: Requires Windows account password authorization (via Windows Logon APIs) before allowing database resets.
-* **Resource Efficient**: Auto-runs in the background and automatically shuts down 5 seconds after earbud disconnection (unless the dashboard window is active).
+- **Real-Time Telemetry**: Queries Left/Right earbud and Charging Case battery percentages and charging states using a native WinRT RFCOMM socket SPP implementation.
+- **Background Tracking**: Silently monitors connection presence (PnP query) and media playback (WASAPI session peak meters) with a 5-second silence grace filter.
+- **Audio App Attribution**: Logs and details specific application audio usage (e.g., Spotify, Chrome) during sessions.
+- **Interactive Analytics**: 
+  - Dynamic daily usage rings, active equalizer animations, and consecutive active listening streak calculations.
+  - Interactive battery drain line charts with normalized grids, hover guidelines, and date-aware bin-packing pagination.
+- **Session Breakdown Directory**: Scrollable connection history with note editing, detailed app audio usage breakdown, and CSV/JSON exporting.
+- **System Automation & Utilities**:
+  - **Autopause**: Automatically pauses system media playback when earbuds disconnect.
+  - **Single Instance**: Singleton instance locking to prevent duplicate tray processes.
+  - **Auto-Backup**: Schedules automatic JSON database backups to local storage and Downloads.
+  - **Secure Purging**: Protects database resets using Windows user password authentication.
 
 
 ---
@@ -64,42 +51,56 @@ On the release page, look in the **Assets** section for a `.msi` or `.exe` insta
 
 ## Architecture Overview
 
-
-The system operates across two primary processes:
+Nox operates as a lightweight, dual-process desktop utility designed to run continuously and silently in the background:
 
 ```
-                  ┌───────────────────────┐
-                  │ Tauri Rust Backend    │
-                  │ (earbuds-tracker.exe) │
-                  └───────────┬───────────┘
-                              │
-         WASAPI / SPP / SQLITE│Tauri IPC
-                              ▼
-                  ┌───────────────────────┐
-                  │ HTML5 / CSS / JS UI   │
-                  │ (Tauri WebView2)      │
-                  └───────────────────────┘
+                   ┌──────────────────────────────────┐
+                   │        Tauri Rust Backend        │
+                   │      (earbuds-tracker.exe)       │
+                   └──────┬────────────────────▲──────┘
+                          │                    │
+            Tauri Events  │                    │ Tauri Commands
+            (IPC push)    │                    │ (IPC request)
+                          ▼                    │
+                   ┌───────────────────────────┴──────┐
+                   │       HTML5 / CSS / JS UI        │
+                   │         (Tauri WebView2)         │
+                   └──────────────────────────────────┘
 ```
 
-The Rust backend is registered to start automatically on Windows login (via Tauri's built-in `tauri-plugin-autostart`). Once running, it stays in the background, monitors Bluetooth audio endpoints, polls battery levels, and records session data to SQLite.
+### 1. **Tauri Backend (Rust)**
+Runs silently as a background service:
+- **Presence & Connection Monitoring**: Tracks the connection/disconnection state of paired Bluetooth devices by querying Windows PnP devices.
+- **Audio Session Tracker**: Monitored via Windows WASAPI session peak meters to measure active playback time with a 5-second silence grace filter.
+- **Battery Polling Service**: Runs a background polling thread that opens a WinRT RFCOMM socket connection to the custom Bluetooth SPP service UUID, queries battery statuses, and caches the results.
+- **Database Engine**: Embeds an SQLite database to record session telemetry, process-specific audio usage, and daily logs.
+- **Auto-Backup Engine**: Automatically schedules database exports to JSON files inside `exports/` and the user's `Downloads/` directory.
 
-1. **Tauri Backend (Rust)**: Manages hardware polling threads, serial communication, SQLite data mapping, Windows auto-start registration, and local notifications. Detects earbud connect/disconnect events and runs the optional on-connect / on-disconnect user scripts (see [Configuration Details](#configuration-details)).
-2. **Frontend Dashboard (HTML/CSS/JS)**: A dark-themed, glassmorphic UI loaded via WebView2 for viewing statistics and history.
+### 2. **Frontend Dashboard (HTML/CSS/JS)**
+A modern dark-themed WebView2 interface accessed from the system tray:
+- **Dynamic Renderers**: Renders daily usage stats using SVG/Canvas dual-ring meters and animated audio equalizers.
+- **Battery & Connection Analytics**: Displays historical graphs via ApexCharts.
+- **Dynamic Pagination**: Performs date-aware bin-packing calculations in JavaScript to slice large datasets into readable chunks.
+- **Local Persistence**: Saves UI configuration preferences inside the browser's `localStorage`.
 
 ---
 
 ## Project Structure
 
-
 ```
 ├── test_winrt.ps1             # WinRT Bluetooth prototyping script
 ├── test.ps1                   # PnP device battery prototyping script
 └── earbuds-tracker-tauri/     # Tauri Project root
-    ├── src/                   # Frontend assets (index.html, styles.css, main.js)
+    ├── src/                   # Frontend assets
+    │   ├── index.html         # Core dashboard interface
+    │   ├── styles.css         # Styling, themes, animations, layouts
+    │   ├── main.js            # Frontend logic, database calls, graph rendering
+    │   └── utils.js           # Utility and helper functions
     └── src-tauri/             # Rust source code
         ├── src/
         │   ├── main.rs        # Tauri entrypoint
         │   ├── lib.rs         # Commands and tray setup
+        │   ├── app_audio.rs   # Audio process tracking and autopause features
         │   ├── audio.rs       # WASAPI peak audio monitoring
         │   ├── bluetooth.rs   # Audio/PnP connection detection
         │   ├── db.rs          # SQLite migrations and querying
@@ -120,8 +121,8 @@ The Rust backend is registered to start automatically on Windows login (via Taur
 ### Build & Run
 1. Clone the repository:
    ```bash
-   git clone https://github.com/gopi470/EarBuds-Tracker.git
-   cd EarBuds-Tracker
+   git clone https://github.com/gopi470/Nox.git
+   cd Nox
    ```
 2. Navigate to the Tauri project directory, install dependencies, and start development mode:
    ```bash
@@ -139,14 +140,21 @@ The Rust backend is registered to start automatically on Windows login (via Taur
 
 ## Configuration Details
 
+All application settings, preferences, and logs are stored in the user's local AppData directory: `%APPDATA%\EarbudsTracker\`.
 
-- **Database Path**: All usage history is persisted to a local SQLite database at:
+### File Locations
+
+- **Database Path**: All session usage history, audio peaks, and daily stats are persisted to a local SQLite database:
   `%APPDATA%\EarbudsTracker\tracker.db`
-- **Target Device Preferences**: The target Bluetooth device name is written to:
-  `%APPDATA%\EarbudsTracker\target_device.txt`
-- **On Connect/Disconnect Script Hooks**: If the backend detects a transition, it will automatically search for and execute the following custom scripts if they exist in the executable directory:
-  - `on_connect` (`.bat` / `.cmd` / `.ps1`)
-  - `on_disconnect` (`.bat` / `.cmd` / `.ps1`)
+- **Application Settings**: Preferences (such as target device name, polling interval, battery step size, autostart, desktop notifications, auto-backup, and autopause settings) are saved in a unified JSON structure:
+  `%APPDATA%\EarbudsTracker\settings.json`
+- **Auto-Backup State**: The timestamp of the last completed auto-backup run is saved in a sibling configuration file:
+  `%APPDATA%\EarbudsTracker\auto_backup_state.json`
+### Frontend State
+
+To ensure immediate UI updates, the WebView2 client persists configurations and cache parameters in the browser's `localStorage` (including graph pagination limits, last-known battery levels, daily playback duration cache, daily goals, device name mapping, notification preferences, autostart state, and active UI font sizing).
+
+
 
 ---
 
