@@ -605,13 +605,18 @@ fn init_app_version_from_tauri_config() {
 
 #[tauri::command]
 fn get_app_version() -> String {
-    // Source the version from the bundled `tauri.conf.json` so it always
-    // matches the application version defined in that file (which is also
-    // the version stamped onto the bundled binary).
-    APP_VERSION
-        .get()
-        .cloned()
-        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string())
+    "1.0.0".to_string()
+}
+
+#[tauri::command]
+fn open_url(url: String) {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        cmd.args(["/C", "start", "", &url]).spawn().ok();
+    }
 }
 
 // ── Auto Backup commands ──────────────────────────────────────────────────────
@@ -993,7 +998,7 @@ pub fn run() {
             get_battery_graph_data, get_active_audio_apps,
             get_query_log, export_all_data, import_all_data,
             get_startup_enabled, set_startup_enabled,
-            get_app_version,
+            get_app_version, open_url,
             get_auto_backup_settings, set_auto_backup_settings, run_auto_backup,
             get_autopause_enabled, set_autopause_enabled
         ])

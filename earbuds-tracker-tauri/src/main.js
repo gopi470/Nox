@@ -781,6 +781,17 @@ async function checkBuildMode() {
 }
 checkBuildMode();
 
+// Open external links in settings using the backend open_url command
+document.querySelectorAll('.about-link').forEach(link => {
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    const url = e.currentTarget.getAttribute('data-url');
+    if (url) {
+      invoke('open_url', { url }).catch(console.error);
+    }
+  });
+});
+
 // Request permission early if enabled
 if (notificationsEnabled && Notification.permission === 'default') {
   Notification.requestPermission();
