@@ -102,14 +102,14 @@
         <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
           <div style="display: flex; flex-direction: column; min-width: 0;">
             <h1 class="page-title">Dashboard</h1>
-            <p class="page-sub" id="dashboard-sub" style="margin: 0;">Real-time connection monitoring for CMF Buds 2a</p>
+            <p class="page-sub" id="dashboard-sub" style="margin: 0;">Real-time connection monitoring</p>
           </div>
           <div style="display: flex; gap: 8px; align-items: center; margin-left: auto;">
             <!-- Active Earbud Profile Indicator (Read-only) -->
             <div class="earbud-switcher-container" id="earbud-switcher">
               <div class="switcher-badge" id="active-earbud-badge" style="cursor: default; pointer-events: none; background: rgba(255, 255, 255, 0.05); border-color: var(--border); box-shadow: none;">
                 <span class="switcher-icon">🎧</span>
-                <span id="active-earbud-name">CMF Buds 2a</span>
+                <span id="active-earbud-name">—</span>
               </div>
             </div>
             
@@ -136,20 +136,35 @@
 
           <!-- Status cards -->
           <div class="detail-col">
-            <div class="card status-card">
+            <div class="card status-card" style="position: relative; overflow: hidden;">
               <span class="status-dot disconnected" id="status-dot"></span>
               <div>
                 <div class="status-title" id="status-title">Disconnected</div>
                 <div class="status-desc" id="status-desc">Earbuds are not detected</div>
               </div>
+              <!-- Watermark -->
+              <svg style="position:absolute;right:12px;bottom:10px;width:40px;height:40px;opacity:0.06;pointer-events:none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 7l10 10-5 5V2l5 5L7 17"/>
+              </svg>
             </div>
-            <div class="card time-card">
+            <div class="card time-card" style="position: relative; overflow: hidden;">
               <div class="time-label">CONNECTION TIME</div>
               <div class="time-value mono" id="conn-time">00:00:00</div>
+              <!-- Watermark -->
+              <svg style="position:absolute;right:12px;bottom:10px;width:40px;height:40px;opacity:0.06;pointer-events:none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
             </div>
-            <div class="card time-card">
+            <div class="card time-card" style="position: relative; overflow: hidden;">
               <div class="time-label green">PLAYBACK TIME</div>
               <div class="time-value mono green" id="play-time">00:00:00</div>
+              <!-- Watermark -->
+              <svg style="position:absolute;right:12px;bottom:10px;width:40px;height:40px;opacity:0.06;pointer-events:none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18V5l12-2v13"/>
+                <circle cx="6" cy="18" r="3"/>
+                <circle cx="18" cy="16" r="3"/>
+              </svg>
             </div>
           </div>
         </div>
@@ -177,16 +192,14 @@
             <div class="status-title" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round" style="color: var(--green);">
-                <circle cx="12" cy="12" r="10"></circle>
-                <path d="M12 16v-4"></path>
-                <path d="M12 8h.01"></path>
+                <rect x="2" y="7" width="16" height="10" rx="2" ry="2"></rect>
+                <line x1="22" y1="11" x2="22" y2="13"></line>
               </svg>
-              Session Quick Facts
+              Earbud Battery
             </div>
             <div style="display: flex; flex-direction: column; flex: 1; justify-content: center; min-height: 60px;">
               <div style="color: var(--text); font-size: 14px; line-height: 1.6;" id="live-facts-text">
-                <span style="color: var(--muted); font-style: italic;">Connect your earbuds to see live session insights
-                  here.</span>
+                <span style="color: var(--muted); font-style: italic;">Connect your earbuds to see live battery levels.</span>
               </div>
             </div>
           </div>
@@ -578,7 +591,7 @@
             <div class="earbud-switcher-container" id="earbud-switcher-settings">
               <div class="switcher-badge" id="active-earbud-badge-settings">
                 <span class="switcher-icon">🎧</span>
-                <span id="active-earbud-name-settings">CMF Buds 2a</span>
+                <span id="active-earbud-name-settings">—</span>
                 <span class="switcher-arrow">▾</span>
               </div>
               <div class="switcher-dropdown" id="switcher-dropdown-settings" hidden></div>
@@ -621,6 +634,20 @@
             <select id="font-style-select" class="input-field" style="width: 180px;">
               <option value="default">Default</option>
               <option value="ndot">NDot</option>
+            </select>
+          </div>
+        </div>
+        <div class="card settings-card">
+          <div class="settings-control-row">
+            <div>
+              <div class="set-title">Font Size</div>
+              <div class="set-desc">Adjust the layout text scaling of the interface.</div>
+            </div>
+            <select id="font-size-select" class="input-field" style="width: 180px;">
+              <option value="small">Small</option>
+              <option value="default">Default</option>
+              <option value="medium">Medium</option>
+              <option value="large">Large</option>
             </select>
           </div>
         </div>
@@ -683,7 +710,7 @@
           <div class="settings-control-row">
             <div>
               <div class="set-title">Battery Drain Interval</div>
-              <div class="set-desc">Matches the step size of earbud battery reporting (e.g. 5% jumps for CMF Buds 2a).
+              <div class="set-desc">Matches the step size of earbud battery reporting (e.g. 5% jumps).
               </div>
             </div>
             <select id="battery-step-select" class="input-field" style="width: 180px;">
@@ -697,7 +724,7 @@
           <div class="settings-control-row" style="flex-direction: column; align-items: stretch; gap: 16px;">
             <div>
               <div class="set-title">Graph Pagination</div>
-              <div class="set-desc">Set how many values the X-axis can hold before moving to a new page.</div>
+              <div class="set-desc">Set how many values the X-axis can hold before moving to a new page for the graphs on the Battery  page.</div>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px;">
               <div>
@@ -802,7 +829,7 @@
             </button>
           </div>
         </div>
-        <div class="card settings-card">
+        <div class="card settings-card" id="protocol-db-card">
           <div class="settings-control-row">
             <div>
               <div class="set-title">Protocol Database</div>

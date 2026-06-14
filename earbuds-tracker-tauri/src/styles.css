@@ -144,7 +144,7 @@ body.font-ndot .nav-label {
 /* ── Content area ─────────────────────────────────────────────────────────── */
 .content { flex: 1; overflow-y: auto; padding: 24px 28px; }
 
-.page { display: none; }
+.page { display: none; max-width: 1200px; margin: 0 auto; width: 100%; }
 .page.active { display: block; }
 
 .page-header { margin-bottom: 24px; }
@@ -1721,5 +1721,64 @@ body.font-ndot .analytics-title {
 .dialog-close-x:active {
   background: rgba(255, 255, 255, 0.12);
 }
+
+/* Font Size Overrides */
+body.fs-small { font-size: 11px; }
+body.fs-small .brand-name { font-size: 15px; }
+body.fs-small .nav-item { font-size: 12px; }
+body.fs-small .nav-label { font-size: 13px; }
+body.fs-small .page-title { font-size: 23px; }
+body.fs-small .page-sub { font-size: 11px; }
+body.fs-small .status-title { font-size: 13px; }
+body.fs-small .status-desc { font-size: 11px; }
+body.fs-small .time-value { font-size: 23px; }
+body.fs-small .stat-title { font-size: 13px; }
+body.fs-small .stat-lbl { font-size: 11px; }
+body.fs-small .stat-val { font-size: 12px; }
+body.fs-small .hist-table { font-size: 12px; }
+body.fs-small .set-title { font-size: 12px; }
+body.fs-small .set-desc { font-size: 11px; }
+body.fs-small .dialog-title { font-size: 14px; }
+body.fs-small .dialog-msg { font-size: 12px; }
+body.fs-small .btn, body.fs-small .input-field { font-size: 12px; }
+
+body.fs-medium { font-size: 14px; }
+body.fs-medium .brand-name { font-size: 18px; }
+body.fs-medium .nav-item { font-size: 14px; }
+body.fs-medium .nav-label { font-size: 16px; }
+body.fs-medium .page-title { font-size: 28px; }
+body.fs-medium .page-sub { font-size: 13px; }
+body.fs-medium .status-title { font-size: 16px; }
+body.fs-medium .status-desc { font-size: 13px; }
+body.fs-medium .time-value { font-size: 28px; }
+body.fs-medium .stat-title { font-size: 16px; }
+body.fs-medium .stat-lbl { font-size: 13px; }
+body.fs-medium .stat-val { font-size: 14px; }
+body.fs-medium .hist-table { font-size: 14px; }
+body.fs-medium .set-title { font-size: 15px; }
+body.fs-medium .set-desc { font-size: 13px; }
+body.fs-medium .dialog-title { font-size: 17px; }
+body.fs-medium .dialog-msg { font-size: 14px; }
+body.fs-medium .btn, body.fs-medium .input-field { font-size: 14px; }
+
+body.fs-large { font-size: 15px; }
+body.fs-large .brand-name { font-size: 20px; }
+body.fs-large .nav-item { font-size: 15px; }
+body.fs-large .nav-label { font-size: 17px; }
+body.fs-large .page-title { font-size: 30px; }
+body.fs-large .page-sub { font-size: 14px; }
+body.fs-large .status-title { font-size: 17px; }
+body.fs-large .status-desc { font-size: 14px; }
+body.fs-large .time-value { font-size: 30px; }
+body.fs-large .stat-title { font-size: 17px; }
+body.fs-large .stat-lbl { font-size: 14px; }
+body.fs-large .stat-val { font-size: 15px; }
+body.fs-large .hist-table { font-size: 15px; }
+body.fs-large .set-title { font-size: 16px; }
+body.fs-large .set-desc { font-size: 14px; }
+body.fs-large .dialog-title { font-size: 18px; }
+body.fs-large .dialog-msg { font-size: 15px; }
+body.fs-large .btn, body.fs-large .input-field { font-size: 15px; }
+
 
 
