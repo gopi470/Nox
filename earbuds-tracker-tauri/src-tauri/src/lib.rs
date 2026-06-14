@@ -80,21 +80,14 @@ pub struct AppSettings {
 
 fn default_battery_interval() -> u64 { 300 }
 fn default_battery_step() -> u8 { 5 }
-fn default_target_device() -> String { "CMF Buds 2a".to_string() }
+fn default_target_device() -> String { "".to_string() }
 fn default_desktop_notifications() -> bool { true }
 fn default_auto_backup_interval() -> String { "never".to_string() }
 fn default_autopause_enabled() -> bool { true }
 fn default_device_profiles() -> Vec<DeviceProfile> {
-    vec![DeviceProfile {
-        friendly_name: "CMF Buds 2a".to_string(),
-        brand: "Nothing".to_string(),
-        protocol_mode: "auto".to_string(),
-        battery_interval: 300,
-        battery_step: 5,
-        mac_address: None,
-    }]
+    vec![]
 }
-fn default_active_device() -> String { "CMF Buds 2a".to_string() }
+fn default_active_device() -> String { "".to_string() }
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -102,7 +95,7 @@ impl Default for AppSettings {
             battery_interval: default_battery_interval(),
             battery_step: default_battery_step(),
             target_device: default_target_device(),
-            startup_enabled: false,
+            startup_enabled: true,
             desktop_notifications: default_desktop_notifications(),
             auto_backup_enabled: false,
             auto_backup_interval: default_auto_backup_interval(),
@@ -856,7 +849,7 @@ fn is_bluetooth_enabled() -> bool {
 
 #[tauri::command]
 fn get_app_version() -> String {
-    "1.0.0".to_string()
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 #[tauri::command]
