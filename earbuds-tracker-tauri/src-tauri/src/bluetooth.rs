@@ -81,6 +81,11 @@ impl BluetoothMonitor {
                         connected.store(false, Ordering::SeqCst);
                     }
 
+                    if dev_name.is_empty() || dev_name == "No Profile Found" {
+                        std::thread::sleep(POLL_INTERVAL);
+                        continue;
+                    }
+
                     let dev_name_lower = dev_name.to_lowercase();
                     let now_connected = check_connected(&dev_name_lower);
 

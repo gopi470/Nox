@@ -173,23 +173,6 @@ pub(crate) fn load_settings() -> AppSettings {
         Err(_) => AppSettings::default(),
     };
 
-    if settings.device_profiles.is_empty() {
-        let name = settings.target_device.clone();
-        let brand = if name.to_uppercase().contains("CMF") || name.to_uppercase().contains("NOTHING") {
-            "nothing_cmf".to_string()
-        } else {
-            "generic_other".to_string()
-        };
-        settings.device_profiles = vec![DeviceProfile {
-            friendly_name: name.clone(),
-            brand,
-            protocol_mode: "auto".to_string(),
-            battery_interval: settings.battery_interval,
-            battery_step: settings.battery_step,
-            mac_address: None,
-        }];
-        settings.active_device = name;
-    }
     settings
 }
 
@@ -321,7 +304,21 @@ fn set_battery_step(step: u8, state: State<TrackerState>) {
 
 #[tauri::command]
 fn reset_all(state: State<TrackerState>) {
+    // 1. Reset database tables
     state.reset_all();
+
+    // 2. Save reset settings where device_profiles is empty, active_device and target_device are empty
+    let mut settings = AppSettings::default();
+    settings.device_profiles = vec![];
+    settings.active_device = String::new();
+    settings.target_device = String::new();
+    save_settings_to_disk(&settings);
+
+    // 3. Reset the running tracker configuration to empty
+    state.set_device_name("No Profile Found");
+    state.set_mac_address(None);
+    state.set_brand("");
+    state.set_protocol_mode("auto");
 }
 
 #[tauri::command]

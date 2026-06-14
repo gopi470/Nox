@@ -765,7 +765,7 @@ async function loadDeviceProfiles() {
     const [active, profiles] = await invoke('get_device_profiles');
     deviceProfiles = profiles;
     activeProfile = profiles.find(p => p.friendly_name === active) || profiles[0];
-    currentDeviceName = activeProfile ? activeProfile.friendly_name : 'No Active Device';
+    currentDeviceName = activeProfile ? activeProfile.friendly_name : 'No Profile Found';
     
     // Update active device UI elements (both dashboard and settings)
     const activeNameEl = document.getElementById('active-earbud-name');
@@ -778,7 +778,11 @@ async function loadDeviceProfiles() {
     }
     const dashboardSub = document.getElementById('dashboard-sub');
     if (dashboardSub) {
-      dashboardSub.textContent = `Real-time connection monitoring for ${currentDeviceName}`;
+      if (activeProfile) {
+        dashboardSub.textContent = `Real-time connection monitoring for ${currentDeviceName}`;
+      } else {
+        dashboardSub.textContent = 'Create or select an earbud profile to start tracking.';
+      }
     }
     
     // Render dropdown list
@@ -817,6 +821,30 @@ function renderSwitcherDropdown() {
   const dropdownSettings = document.getElementById('switcher-dropdown-settings');
   if (dropdownSettings) {
     dropdownSettings.innerHTML = '';
+    if (deviceProfiles.length === 0) {
+      const item = document.createElement('div');
+      item.className = 'switcher-item disabled';
+      item.style.color = 'var(--muted)';
+      item.style.pointerEvents = 'none';
+      item.textContent = 'No Profile Found';
+      dropdownSettings.appendChild(item);
+      
+      const createBtn = document.createElement('div');
+      createBtn.className = 'switcher-item';
+      createBtn.style.color = 'var(--accent)';
+      createBtn.style.fontWeight = 'bold';
+      createBtn.textContent = '+ Create Profile';
+      createBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdownSettings.hidden = true;
+        const switcherEl = document.getElementById('earbud-switcher-settings');
+        if (switcherEl) switcherEl.classList.remove('active');
+        const setupBtn = document.getElementById('btn-open-device-setup');
+        if (setupBtn) setupBtn.click();
+      });
+      dropdownSettings.appendChild(createBtn);
+      return;
+    }
     deviceProfiles.forEach(p => {
       const item = document.createElement('div');
       item.className = 'switcher-item' + (p.friendly_name === currentDeviceName ? ' active' : '');
@@ -1397,6 +1425,19 @@ function populateProfileSelectDropdown() {
   const select = document.getElementById('profile-select-dropdown');
   if (!select) return;
   select.innerHTML = '';
+  if (deviceProfiles.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'No Profile Found';
+    select.appendChild(opt);
+    
+    const editFriendlyName = document.getElementById('edit-profile-friendly-name');
+    if (editFriendlyName) editFriendlyName.value = '';
+    const editBrand = document.getElementById('edit-profile-brand');
+    if (editBrand) editBrand.value = '';
+    updateBrandHint('', 'edit-profile-proto-status', 'edit-profile-proto-text');
+    return;
+  }
   deviceProfiles.forEach(p => {
     const opt = document.createElement('option');
     opt.value = p.friendly_name;
@@ -3168,11 +3209,11 @@ document.getElementById('reset-btn').addEventListener('click', () => {
         <line x1="12" y1="9" x2="12" y2="13" />
         <line x1="12" y1="17" x2="12.01" y2="17" />
       </svg>
-      Reset All Data?
+      Reset All Data and Delete Profiles?
     `;
   }
   if (msgEl) {
-    msgEl.textContent = 'This will permanently delete all session history and statistics. You will need to verify your Windows password to proceed.';
+    msgEl.textContent = 'This will permanently delete all session history and statistics, and delete all device profiles. You will need to verify your Windows password to proceed.';
   }
   dialog.hidden = false;
 });
@@ -3229,13 +3270,18 @@ document.getElementById('auth-confirm').addEventListener('click', async () => {
     if (pendingAuthAction === 'reset-all') {
       try {
         await invoke('reset_all');
+        await loadDeviceProfiles();
+        populateProfileSelectDropdown();
         localStorage.removeItem('daily-playback-cache-date');
         localStorage.removeItem('daily-playback-cache-secs');
+        localStorage.removeItem('last-battery-info');
+        localStorage.removeItem('last-battery-update-at');
+        updateBatteryUI(null);
         statsHistoryBoundsPromise = null;
         statsWeekOffset = 0;
         statsMaxWeekOffset = null;
         if (resetSuccessMsg) {
-          resetSuccessMsg.textContent = 'All session history and statistics have been reset.';
+          resetSuccessMsg.textContent = 'All session history and statistics have been reset, and all device profiles have been deleted.';
         }
         if (resetSuccessDialog) resetSuccessDialog.hidden = false;
         try {
