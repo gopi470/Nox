@@ -52,6 +52,7 @@ windows = { version = "0.58", features = [
     "Foundation_Collections",
     "Networking_Sockets",
     "Storage_Streams",
+    "Media_Control",
 ] }
 wmi = "0.14"
 

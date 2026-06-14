@@ -24,7 +24,7 @@ use log::{debug, info, warn};
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED};
 
-const POLL_INTERVAL: Duration = Duration::from_secs(3);
+const POLL_INTERVAL: Duration = Duration::from_millis(500);
 
 use parking_lot::RwLock;
 
@@ -71,6 +71,7 @@ impl BluetoothMonitor {
 
                 let mut last: Option<bool> = None;
                 let mut last_dev_name = String::new();
+                let mut ticks_since_pnp_check = 6; // start ready to check
 
                 while !stop_flag.load(Ordering::SeqCst) {
                     let dev_name = device_name_lock.read().clone();
@@ -79,6 +80,7 @@ impl BluetoothMonitor {
                         last_dev_name = dev_name.clone();
                         last = None;
                         connected.store(false, Ordering::SeqCst);
+                        ticks_since_pnp_check = 6;
                     }
 
                     if dev_name.is_empty() || dev_name == "No Profile Found" {
@@ -87,7 +89,25 @@ impl BluetoothMonitor {
                     }
 
                     let dev_name_lower = dev_name.to_lowercase();
-                    let now_connected = check_connected(&dev_name_lower);
+                    
+                    // Optimized hybrid strategy:
+                    // check WASAPI active endpoints (fast, native) on every tick (500ms).
+                    // Fall back to MMDEVAPI PnP presence (slow, PowerShell subprocess) only once every 6 ticks (3 seconds) to prevent CPU spikes.
+                    let now_connected = match check_wasapi(&dev_name_lower) {
+                        Some(true) => {
+                            ticks_since_pnp_check = 6; // reset PnP check timer
+                            true
+                        }
+                        _ => {
+                            if ticks_since_pnp_check >= 6 {
+                                ticks_since_pnp_check = 0;
+                                check_mmdevapi_present(&dev_name_lower).unwrap_or(false)
+                            } else {
+                                ticks_since_pnp_check += 1;
+                                false
+                            }
+                        }
+                    };
 
                     if Some(now_connected) != last {
                         let prev = last; // capture before updating
@@ -246,3 +266,9 @@ fn check_mmdevapi_present(target: &str) -> Option<bool> {
     let count: u32 = s.parse().ok()?;
     Some(count > 0)
 }
+
+#[cfg(not(target_os = "windows"))]
+fn check_mmdevapi_present(_target: &str) -> Option<bool> { None }
+
+#[cfg(not(target_os = "windows"))]
+fn check_wasapi(_target: &str) -> Option<bool> { None }
