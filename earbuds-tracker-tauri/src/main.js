@@ -147,8 +147,9 @@ let startupEnabled = localStorage.getItem('startup-enabled') === 'true';
 let autopauseEnabled = localStorage.getItem('autopause-enabled') !== 'false';
 let activeProfile = null;
 let deviceProfiles = [];
-let currentDeviceName = 'CMF Buds 2a';
+let currentDeviceName = '';
 let fontStyle = localStorage.getItem('font-style') || 'default';
+let fontSize = localStorage.getItem('font-size') || 'default';
 let batteryPollIntervalSec = 10;
 
 
@@ -192,6 +193,7 @@ const startupToggle = document.getElementById('startup-toggle');
 const autopauseToggle = document.getElementById('autopause-toggle');
 const deviceNameInput = document.getElementById('device-name-input');
 const fontStyleSelect = document.getElementById('font-style-select');
+const fontSizeSelect = document.getElementById('font-size-select');
 const batteryStepSelect = document.getElementById('battery-step-select');
 const importDataFile = document.getElementById('import-data-file');
 const exportDataBtn = document.getElementById('export-data-btn');
@@ -228,6 +230,19 @@ function applyFontStyle(value) {
   document.body.classList.toggle('font-ndot', mode === 'ndot');
   if (fontStyleSelect && fontStyleSelect.value !== mode) {
     fontStyleSelect.value = mode;
+  }
+}
+
+function applyFontSize(value) {
+  const size = ['small', 'medium', 'large'].includes(value) ? value : 'default';
+  fontSize = size;
+  localStorage.setItem('font-size', size);
+  document.body.classList.remove('fs-small', 'fs-medium', 'fs-large');
+  if (size !== 'default') {
+    document.body.classList.add(`fs-${size}`);
+  }
+  if (fontSizeSelect && fontSizeSelect.value !== size) {
+    fontSizeSelect.value = size;
   }
 }
 
@@ -323,6 +338,14 @@ if (fontStyleSelect) {
   fontStyleSelect.value = fontStyle;
   fontStyleSelect.addEventListener('change', (e) => {
     applyFontStyle(e.target.value);
+  });
+}
+
+applyFontSize(fontSize);
+if (fontSizeSelect) {
+  fontSizeSelect.value = fontSize;
+  fontSizeSelect.addEventListener('change', (e) => {
+    applyFontSize(e.target.value);
   });
 }
 async function initDeviceNameDatalist() {
@@ -530,16 +553,11 @@ async function initAutoBackupSettings() {
 
 initAutoBackupSettings();
 
-// Populate the About section's version dynamically from the Tauri config.
+// Hardcode the About section's version to 1.0.0
 async function initAppVersion() {
   const el = document.getElementById('app-version');
   if (!el) return;
-  try {
-    const version = await invoke('get_app_version');
-    if (version) el.textContent = String(version);
-  } catch (e) {
-    console.error('get_app_version failed', e);
-  }
+  el.textContent = '1.0.0';
 }
 initAppVersion();
 
@@ -663,6 +681,7 @@ function buildSettingsBackup() {
     autopause_enabled: autopauseEnabled,
     target_device: currentDeviceName,
     font_style: fontStyle,
+    font_size: fontSize,
     battery_interval_secs: batteryPollIntervalSec,
     battery_step: parseInt(batteryStepSelect?.value || '5', 10) || 5,
   };
@@ -722,6 +741,10 @@ async function restoreSettingsFromBackup(settings = {}) {
 
   if (typeof settings.font_style === 'string' && settings.font_style.trim()) {
     applyFontStyle(settings.font_style.trim());
+  }
+
+  if (typeof settings.font_size === 'string' && settings.font_size.trim()) {
+    applyFontSize(settings.font_size.trim());
   }
 
   if (typeof settings.battery_interval_secs === 'number') {
@@ -1786,6 +1809,19 @@ if (btnCreateProfile) {
       populateProfileSelectDropdown();
       resetProfileForm();
       showNotificationToast(successMsg);
+
+      if (savedName) {
+        await selectActiveProfile(savedName);
+        if (currentDeviceName === savedName) {
+          setActiveTab(switchTabEdit);
+          const select = document.getElementById('profile-select-dropdown');
+          if (select) {
+            select.value = savedName;
+            select.dispatchEvent(new Event('change'));
+          }
+          retryProfileConnection(savedName);
+        }
+      }
     } catch (err) {
       console.error(err);
       showNotificationToast("Error creating profile: " + err);
@@ -1875,6 +1911,10 @@ async function checkBuildMode() {
     const tag = document.getElementById('debug-tag');
     if (tag) {
       tag.style.display = debugMode ? 'inline-block' : 'none';
+    }
+    const dbCard = document.getElementById('protocol-db-card');
+    if (dbCard) {
+      dbCard.style.display = debugMode ? 'block' : 'none';
     }
     // Disable right-click context menu in production release
     if (!debugMode) {
@@ -2712,32 +2752,102 @@ function fmtRemainingText(secs) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-async function updateEstimatedTimeLeft(batteryInfo) {
+async function updateEstimatedTimeLeft(batteryInfo, sessPlay) {
   const estText = document.getElementById('live-est-time');
   if (!estText) return;
 
-  const currentVal = batteryInfo?.left;
+  const left = batteryInfo?.left;
+  const right = batteryInfo?.right;
+  let currentVal = null;
+  if (left != null && right != null) {
+    currentVal = (left + right) / 2;
+  } else if (left != null) {
+    currentVal = left;
+  } else if (right != null) {
+    currentVal = right;
+  }
+
   if (currentVal == null) {
     estText.innerHTML = `<span style="color: var(--muted); font-size: 14px; font-weight: 400; font-family: 'Inter', sans-serif;">—</span>`;
     return;
   }
 
   let estimateSecs = null;
-  let estimateNote = `based on ${currentVal}% battery`;
+  let estimateNote = `based on ${Math.round(currentVal)}% battery`;
 
   try {
     const sessions = await invoke('get_sessions');
-    const currentSession = Array.isArray(sessions) && sessions.length > 0 ? sessions[0] : null;
-    const connectedSecs = Number(currentSession?.connected_secs || 0);
-    const startVal = Number(currentSession?.bat_left_connect);
+    const hasSessions = Array.isArray(sessions) && sessions.length > 0;
+    const currentSession = hasSessions ? sessions[0] : null;
 
-    if (Number.isFinite(connectedSecs) && connectedSecs > 0 && Number.isFinite(startVal)) {
-      const drop = startVal - currentVal;
-      if (drop > 0) {
-        const drainRatePerSec = drop / connectedSecs;
-        if (drainRatePerSec > 0) {
-          estimateSecs = currentVal / drainRatePerSec;
-          estimateNote = `based on this session's drain rate`;
+    // 1. Try to use current session's active playback drain rate
+    if (currentSession) {
+      const playbackSecs = Number(sessPlay || currentSession.playback_secs || 0);
+      const startLeft = currentSession.bat_left_connect;
+      const startRight = currentSession.bat_right_connect;
+      let startVal = null;
+      if (startLeft != null && startRight != null) {
+        startVal = (Number(startLeft) + Number(startRight)) / 2;
+      } else if (startLeft != null) {
+        startVal = Number(startLeft);
+      } else if (startRight != null) {
+        startVal = Number(startRight);
+      }
+
+      if (Number.isFinite(playbackSecs) && playbackSecs > 0 && startVal !== null && Number.isFinite(startVal)) {
+        const drop = startVal - currentVal;
+        if (drop > 0) {
+          const drainRatePerSec = drop / playbackSecs;
+          if (drainRatePerSec > 0) {
+            estimateSecs = currentVal / drainRatePerSec;
+            estimateNote = `based on this session's playback rate`;
+          }
+        }
+      }
+    }
+
+    // 2. Fallback: calculate average from historical sessions of this profile
+    if (estimateSecs === null && hasSessions) {
+      let totalDrop = 0;
+      let totalSecs = 0;
+      for (const s of sessions) {
+        const startL = s.bat_left_connect;
+        const startR = s.bat_right_connect;
+        const endL = s.bat_left_disc;
+        const endR = s.bat_right_disc;
+        const secs = s.playback_secs; // use playback_secs!
+
+        let startAvg = null;
+        if (startL != null && startR != null) {
+          startAvg = (startL + startR) / 2;
+        } else if (startL != null) {
+          startAvg = startL;
+        } else if (startR != null) {
+          startAvg = startR;
+        }
+
+        let endAvg = null;
+        if (endL != null && endR != null) {
+          endAvg = (endL + endR) / 2;
+        } else if (endL != null) {
+          endAvg = endL;
+        } else if (endR != null) {
+          endAvg = endR;
+        }
+
+        if (startAvg !== null && endAvg !== null && secs != null && secs > 0) {
+          const drop = startAvg - endAvg;
+          if (drop > 0) {
+            totalDrop += drop;
+            totalSecs += secs;
+          }
+        }
+      }
+      if (totalDrop > 0 && totalSecs > 0) {
+        const avgRate = totalDrop / totalSecs;
+        if (avgRate > 0) {
+          estimateSecs = currentVal / avgRate;
+          estimateNote = `based on historical playback rate`;
         }
       }
     }
@@ -2746,15 +2856,14 @@ async function updateEstimatedTimeLeft(batteryInfo) {
   }
 
   if (estimateSecs == null) {
-    // Conservative fallback: roughly 6 hours at 100%.
-    estimateSecs = currentVal * 216;
+    estText.innerHTML = `<span style="font-size: 16px; font-weight: 400; color: var(--muted); font-family: 'Inter', sans-serif;">Calibrating...</span><div style="color: var(--muted); font-size: 11px; font-weight: 400; font-family: 'Inter', sans-serif; margin-top: 4px; font-style: italic;">waiting for active playback battery drop</div>`;
+  } else {
+    estText.innerHTML = `≈ ${fmtRemainingText(estimateSecs)}<div style="color: var(--muted); font-size: 13px; font-weight: 400; font-family: 'Inter', sans-serif; margin-top: 4px;">${estimateNote}</div>`;
   }
-
-  estText.innerHTML = `≈ ${fmtRemainingText(estimateSecs)}<div style="color: var(--muted); font-size: 13px; font-weight: 400; font-family: 'Inter', sans-serif; margin-top: 4px;">${estimateNote}</div>`;
 }
 
 // ── Live Dashboard Extras ───────────────────────────────────────────────────────
-async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay) {
+async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay, sessPlay) {
   const appsContainer = document.getElementById('live-apps-container');
   const factsText = document.getElementById('live-facts-text');
 
@@ -2762,7 +2871,7 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
 
   if (!connected) {
     appsContainer.innerHTML = '<div style="color: var(--muted); font-size: 13px; font-style: italic; text-align: center;">Nothing playing right now</div>';
-    factsText.innerHTML = '<span style="color: var(--muted); font-style: italic;">Connect your earbuds to see live session insights here.</span>';
+    factsText.innerHTML = '<span style="color: var(--muted); font-style: italic; text-align: center;">Connect your earbuds to see live battery levels.</span>';
     return;
   }
 
@@ -2793,52 +2902,123 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
     console.error('get_active_audio_apps failed', e);
   }
 
-  // 2. Session Quick Facts
+  // 2. Earbud Battery Status
   try {
     const sessions = await invoke('get_sessions');
-    if (sessions && sessions.length > 0) {
-      const currentSession = sessions[0];
-      const connTime = fmtDurText(currentSession.connected_secs);
-
-      let batteryDropText = '';
-      if (batteryInfo) {
-        const startBat = currentSession.bat_left_connect;
-        const currentBat = batteryInfo.left;
-        if (startBat != null && currentBat != null) {
-          const drop = startBat - currentBat;
-          if (drop > 0) {
-            batteryDropText = ` The battery has dropped by <strong>${drop}%</strong> since connection.`;
-          } else if (drop < 0) {
-            batteryDropText = ` The battery has charged by <strong>${Math.abs(drop)}%</strong> since connection.`;
-          } else {
-            batteryDropText = ` The battery level hasn't changed since connection.`;
+    const isUnified = activeProfile && (activeProfile.protocol_mode === 'standard' || activeProfile.brand === 'generic_other');
+    
+    let batteryHtml = '';
+    let dropText = '';
+    
+    if (batteryInfo) {
+      const leftVal = batteryInfo.left;
+      const rightVal = batteryInfo.right;
+      let caseVal = batteryInfo.case;
+      const cacheKey = 'last-known-case-battery-' + (currentDeviceName || 'default');
+      if (caseVal === null || caseVal === undefined) {
+        const cachedCase = localStorage.getItem(cacheKey);
+        if (cachedCase !== null) {
+          caseVal = parseInt(cachedCase, 10);
+        } else if (sessions && sessions.length > 0) {
+          for (const s of sessions) {
+            if (s.bat_case_connect !== null && s.bat_case_connect !== undefined) {
+              caseVal = s.bat_case_connect;
+              localStorage.setItem(cacheKey, String(caseVal));
+              break;
+            }
+            if (s.bat_case_disc !== null && s.bat_case_disc !== undefined) {
+              caseVal = s.bat_case_disc;
+              localStorage.setItem(cacheKey, String(caseVal));
+              break;
+            }
+          }
+        }
+      } else {
+        localStorage.setItem(cacheKey, String(caseVal));
+      }
+      
+      if (isUnified) {
+        batteryHtml = `
+          <div style="display: flex; justify-content: center; width: 100%; text-align: center;">
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <span style="font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 0.5px;">BATTERY</span>
+              <span style="font-size: 20px; font-weight: 700; color: var(--text); font-family: monospace;">${leftVal !== null ? `${leftVal}%` : '—'}</span>
+            </div>
+          </div>
+        `;
+        
+        if (sessions && sessions.length > 0) {
+          const currentSession = sessions[0];
+          const startLeft = currentSession.bat_left_connect;
+          if (startLeft != null && leftVal != null) {
+            const drop = startLeft - leftVal;
+            if (drop > 0) dropText = `-${drop}%`;
+          }
+        }
+      } else {
+        const hasCase = caseVal !== null && caseVal !== undefined;
+        batteryHtml = `
+          <div style="display: flex; justify-content: space-around; width: 100%; text-align: center;">
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <span style="font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 0.5px;">LEFT</span>
+              <span style="font-size: 20px; font-weight: 700; color: var(--text); font-family: monospace;">${leftVal !== null ? `${leftVal}%` : '—'}</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <span style="font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 0.5px;">RIGHT</span>
+              <span style="font-size: 20px; font-weight: 700; color: var(--text); font-family: monospace;">${rightVal !== null ? `${rightVal}%` : '—'}</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <span style="font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 0.5px;">CASE</span>
+              <span style="font-size: 20px; font-weight: 700; color: var(--text); font-family: monospace;">${caseVal !== null ? `${caseVal}%` : '—'}</span>
+            </div>
+          </div>
+        `;
+        
+        if (sessions && sessions.length > 0) {
+          const currentSession = sessions[0];
+          const startLeft = currentSession.bat_left_connect;
+          const startRight = currentSession.bat_right_connect;
+          const startCase = currentSession.bat_case_connect;
+          let leftDrop = 0;
+          let rightDrop = 0;
+          let caseDrop = 0;
+          if (startLeft != null && leftVal != null) {
+            leftDrop = Math.max(0, startLeft - leftVal);
+          }
+          if (startRight != null && rightVal != null) {
+            rightDrop = Math.max(0, startRight - rightVal);
+          }
+          if (startCase != null && caseVal != null) {
+            caseDrop = Math.max(0, startCase - caseVal);
+          }
+          const drops = [];
+          if (leftDrop > 0) drops.push(`L: -${leftDrop}%`);
+          if (rightDrop > 0) drops.push(`R: -${rightDrop}%`);
+          if (caseDrop > 0) drops.push(`C: -${caseDrop}%`);
+          if (drops.length > 0) {
+            dropText = drops.join(' | ');
           }
         }
       }
-
-      factsText.innerHTML = `You've been connected for <strong>${connTime}</strong> in this session.${batteryDropText}`;
-    }
-  } catch (e) {
-    console.error('get_sessions failed in extras', e);
-  }
-
-  await updateEstimatedTimeLeft(batteryInfo);
-
-  // 3. Estimated Time Left
-  const estText = document.getElementById('live-est-time');
-  if (estText) {
-    if (batteryInfo && batteryInfo.left != null) {
-      // Assume 6 hours (360 minutes) for 100% battery
-      const totalMins = Math.round(batteryInfo.left * 3.6);
-      const h = Math.floor(totalMins / 60);
-      const m = totalMins % 60;
-      estText.innerHTML = `≈ ${h}h ${m}m<div style="color: var(--muted); font-size: 13px; font-weight: 400; font-family: 'Inter', sans-serif; margin-top: 4px;">based on ${batteryInfo.left}%</div>`;
     } else {
-      estText.innerHTML = `<span style="color: var(--muted); font-size: 14px; font-weight: 400; font-family: 'Inter', sans-serif;">—</span>`;
+      batteryHtml = `
+        <div style="color: var(--muted); font-style: italic; text-align: center; font-size: 13px;">
+          No battery telemetry available
+        </div>
+      `;
     }
+    
+    let dropHtml = '';
+    if (dropText) {
+      dropHtml = `<div style="margin-top: 8px; font-size: 11px; color: var(--muted); text-align: center;">Session drop: <strong style="color: var(--text);">${dropText}</strong></div>`;
+    }
+    
+    factsText.innerHTML = `<div style="display: flex; flex-direction: column; align-items: center; width: 100%;">${batteryHtml}${dropHtml}</div>`;
+  } catch (e) {
+    console.error('Failed to render live battery details', e);
   }
 
-  await updateEstimatedTimeLeft(batteryInfo);
+  await updateEstimatedTimeLeft(batteryInfo, sessPlay);
 
   // 4. Daily Goal Progress
   const goalTargetSecs = currentGoal * 3600;
@@ -2851,7 +3031,11 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
 
   if (goalValEl && goalTargetEl && goalBarEl) {
     goalValEl.textContent = fmtDurText(totalTodayPlay);
-    goalTargetEl.textContent = `${currentGoal}h`;
+    if (currentGoal < 1.0) {
+      goalTargetEl.textContent = `${Math.round(currentGoal * 60)} min`;
+    } else {
+      goalTargetEl.textContent = `${currentGoal}h`;
+    }
     goalBarEl.style.width = `${progressPct}%`;
     if (progressPct >= 100) {
       goalBarEl.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)'; // Gold if met
@@ -2986,7 +3170,7 @@ async function refreshSnapshot() {
   }
 
   // Update Live Dashboard Extras
-  updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay);
+  updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay, sess_play);
 
   // Stats page
   document.getElementById('s-today-conn').textContent = fmtH(today.connected);
@@ -3311,7 +3495,16 @@ function updateBatteryUI(batteryInfo) {
   const leftChar = batteryInfo ? batteryInfo.left_charging : false;
   const rightVal = batteryInfo ? batteryInfo.right : null;
   const rightChar = batteryInfo ? batteryInfo.right_charging : false;
-  const caseVal = batteryInfo ? batteryInfo.case : null;
+  let caseVal = batteryInfo ? batteryInfo.case : null;
+  const cacheKey = 'last-known-case-battery-' + (currentDeviceName || 'default');
+  if (caseVal === null || caseVal === undefined) {
+    const cachedCase = localStorage.getItem(cacheKey);
+    if (cachedCase !== null) {
+      caseVal = parseInt(cachedCase, 10);
+    }
+  } else {
+    localStorage.setItem(cacheKey, String(caseVal));
+  }
   const caseChar = batteryInfo ? batteryInfo.case_charging : false;
 
   if (isUnified) {
@@ -4169,6 +4362,13 @@ async function loadBatteryGraph() {
       liveLeft = batteryInfo.left;
       liveRight = batteryInfo.right;
       liveCase = batteryInfo.case;
+      if (liveCase === null || liveCase === undefined) {
+        const cacheKey = 'last-known-case-battery-' + (currentDeviceName || 'default');
+        const cachedCase = localStorage.getItem(cacheKey);
+        if (cachedCase !== null) {
+          liveCase = parseInt(cachedCase, 10);
+        }
+      }
       // Use the global connection state tracker (wasConnected is set by the poll loop)
       // Fallback: check status text but use exact match, not includes(), to avoid
       // matching "Disconnected (Last Known)" which also contains "Connected"
