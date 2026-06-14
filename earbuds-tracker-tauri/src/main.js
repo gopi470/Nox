@@ -2768,7 +2768,7 @@ async function updateEstimatedTimeLeft(batteryInfo, sessPlay) {
   }
 
   if (currentVal == null) {
-    estText.innerHTML = `<span style="color: var(--muted); font-size: 14px; font-weight: 400; font-family: 'Inter', sans-serif;">—</span>`;
+    estText.innerHTML = `<span style="font-size: 14px; font-weight: 400; color: var(--muted); font-style: italic; font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;">Connect earbuds to see estimated time left</span>`;
     return;
   }
 
@@ -2780,7 +2780,8 @@ async function updateEstimatedTimeLeft(batteryInfo, sessPlay) {
     const hasSessions = Array.isArray(sessions) && sessions.length > 0;
     const currentSession = hasSessions ? sessions[0] : null;
 
-    // 1. Try to use current session's active playback drain rate
+    // 1. Current session's active playback drain rate
+    let sessionRate = null;
     if (currentSession) {
       const playbackSecs = Number(sessPlay || currentSession.playback_secs || 0);
       const startLeft = currentSession.bat_left_connect;
@@ -2793,21 +2794,18 @@ async function updateEstimatedTimeLeft(batteryInfo, sessPlay) {
       } else if (startRight != null) {
         startVal = Number(startRight);
       }
-
       if (Number.isFinite(playbackSecs) && playbackSecs > 0 && startVal !== null && Number.isFinite(startVal)) {
         const drop = startVal - currentVal;
         if (drop > 0) {
-          const drainRatePerSec = drop / playbackSecs;
-          if (drainRatePerSec > 0) {
-            estimateSecs = currentVal / drainRatePerSec;
-            estimateNote = `based on this session's playback rate`;
-          }
+          const rate = drop / playbackSecs;
+          if (rate > 0) sessionRate = rate;
         }
       }
     }
 
-    // 2. Fallback: calculate average from historical sessions of this profile
-    if (estimateSecs === null && hasSessions) {
+    // 2. Historical average playback drain rate (across completed sessions)
+    let historicalRate = null;
+    if (hasSessions) {
       let totalDrop = 0;
       let totalSecs = 0;
       for (const s of sessions) {
@@ -2815,41 +2813,45 @@ async function updateEstimatedTimeLeft(batteryInfo, sessPlay) {
         const startR = s.bat_right_connect;
         const endL = s.bat_left_disc;
         const endR = s.bat_right_disc;
-        const secs = s.playback_secs; // use playback_secs!
+        const secs = s.playback_secs;
 
         let startAvg = null;
-        if (startL != null && startR != null) {
-          startAvg = (startL + startR) / 2;
-        } else if (startL != null) {
-          startAvg = startL;
-        } else if (startR != null) {
-          startAvg = startR;
-        }
+        if (startL != null && startR != null) startAvg = (startL + startR) / 2;
+        else if (startL != null) startAvg = startL;
+        else if (startR != null) startAvg = startR;
 
         let endAvg = null;
-        if (endL != null && endR != null) {
-          endAvg = (endL + endR) / 2;
-        } else if (endL != null) {
-          endAvg = endL;
-        } else if (endR != null) {
-          endAvg = endR;
-        }
+        if (endL != null && endR != null) endAvg = (endL + endR) / 2;
+        else if (endL != null) endAvg = endL;
+        else if (endR != null) endAvg = endR;
 
         if (startAvg !== null && endAvg !== null && secs != null && secs > 0) {
           const drop = startAvg - endAvg;
-          if (drop > 0) {
-            totalDrop += drop;
-            totalSecs += secs;
-          }
+          if (drop > 0) { totalDrop += drop; totalSecs += secs; }
         }
       }
       if (totalDrop > 0 && totalSecs > 0) {
-        const avgRate = totalDrop / totalSecs;
-        if (avgRate > 0) {
-          estimateSecs = currentVal / avgRate;
-          estimateNote = `based on historical playback rate`;
-        }
+        const rate = totalDrop / totalSecs;
+        if (rate > 0) historicalRate = rate;
       }
+    }
+
+    // 3. Blend: current session gets 2x weight (more recent = more relevant)
+    let blendedRate = null;
+    let estimateNote = `based on ${Math.round(currentVal)}% battery`;
+    if (sessionRate !== null && historicalRate !== null) {
+      blendedRate = (sessionRate * 2 + historicalRate) / 3;
+      estimateNote = `blended session & historical rate`;
+    } else if (sessionRate !== null) {
+      blendedRate = sessionRate;
+      estimateNote = `based on this session's playback rate`;
+    } else if (historicalRate !== null) {
+      blendedRate = historicalRate;
+      estimateNote = `based on historical playback rate`;
+    }
+
+    if (blendedRate !== null && blendedRate > 0) {
+      estimateSecs = currentVal / blendedRate;
     }
   } catch (e) {
     console.error('get_sessions failed for estimated time left', e);
@@ -2870,8 +2872,9 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay,
   if (!appsContainer || !factsText) return;
 
   if (!connected) {
-    appsContainer.innerHTML = '<div style="color: var(--muted); font-size: 13px; font-style: italic; text-align: center;">Nothing playing right now</div>';
-    factsText.innerHTML = '<span style="color: var(--muted); font-style: italic; text-align: center;">Connect your earbuds to see live battery levels.</span>';
+    appsContainer.innerHTML = '<div style="color: var(--muted); font-size: 14px; font-style: italic; font-family: \'Segoe UI Variable\', \'Segoe UI\', system-ui, sans-serif; text-align: center;">Nothing playing right now</div>';
+    factsText.innerHTML = '<span style="color: var(--muted); font-style: italic; text-align: center;">Connect your earbuds to see live battery levels</span>';
+    updateEstimatedTimeLeft(null, 0);
     return;
   }
 
@@ -2896,7 +2899,7 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay,
         appsContainer.appendChild(div);
       });
     } else {
-      appsContainer.innerHTML = '<div style="color: var(--muted); font-size: 13px; font-style: italic; text-align: center;">Nothing playing right now</div>';
+      appsContainer.innerHTML = '<div style="color: var(--muted); font-size: 14px; font-style: italic; font-family: \'Segoe UI Variable\', \'Segoe UI\', system-ui, sans-serif; text-align: center;">Nothing playing right now</div>';
     }
   } catch (e) {
     console.error('get_active_audio_apps failed', e);
