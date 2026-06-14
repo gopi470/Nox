@@ -1072,6 +1072,27 @@
     </div>
   </div>
 
+  <!-- Profile Created Success Dialog -->
+  <div class="dialog-overlay" id="profile-created-dialog" hidden>
+    <div class="dialog-box" style="max-width: 400px; width: 95%;">
+      <div class="dialog-title" style="display:flex;align-items:center;gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6L9 17l-5-5" />
+        </svg>
+        Profile Registered
+      </div>
+      <div class="dialog-msg" id="profile-created-msg"></div>
+      <div style="font-size: 12px; color: var(--muted); margin-top: -4px; line-height: 1.5;">
+        Head to the <strong style="color: var(--text);">Dashboard</strong> to view live telemetry and session stats for this profile.
+      </div>
+      <div class="dialog-btns" style="margin-top: 16px;">
+        <button class="btn" id="profile-created-close">Dismiss</button>
+        <button class="btn btn-primary" id="profile-created-goto-dashboard">Go to Dashboard</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Device Setup / Manage Profiles Dialog -->
   <div class="dialog-overlay" id="device-setup-dialog" hidden>
     <div class="dialog-box" style="max-width: 440px; width: 95%; position: relative; padding-top: 36px;">

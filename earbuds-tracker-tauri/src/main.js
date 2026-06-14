@@ -213,6 +213,11 @@ const exportSuccessClose = document.getElementById('export-success-close');
 const resetSuccessDialog = document.getElementById('reset-success-dialog');
 const resetSuccessMsg = document.getElementById('reset-success-msg');
 const resetSuccessClose = document.getElementById('reset-success-close');
+
+const profileCreatedDialog = document.getElementById('profile-created-dialog');
+const profileCreatedMsg = document.getElementById('profile-created-msg');
+const profileCreatedClose = document.getElementById('profile-created-close');
+const profileCreatedGotoDashboard = document.getElementById('profile-created-goto-dashboard');
 const graphDurationSelect = document.getElementById('graph-duration');
 const graphDurationNote = document.getElementById('graph-duration-note');
 const graphGroupSelect = document.getElementById('graph-group');
@@ -1355,7 +1360,7 @@ populateBrandDropdowns();
 
 const lastQueryStatus = {};
 
-function updateProfileStatusUI() {
+async function updateProfileStatusUI() {
   const select = document.getElementById('profile-select-dropdown');
   if (!select) return;
   const name = select.value;
@@ -1363,18 +1368,27 @@ function updateProfileStatusUI() {
   const textEl = document.getElementById('edit-profile-proto-text');
   if (!statusEl || !textEl) return;
 
-  if (!name || deviceProfiles.length === 0) {
+  if (!name) {
     statusEl.style.display = 'none';
     textEl.innerHTML = '';
     return;
   }
-  
-  const p = deviceProfiles.find(x => x.friendly_name === name);
+
+  // Always fetch fresh profile data from backend so protocol_mode is current
+  let freshProfiles = deviceProfiles;
+  try {
+    freshProfiles = await invoke('get_device_profiles');
+    deviceProfiles = freshProfiles;
+  } catch (e) {
+    console.warn('Could not refresh profiles for status UI', e);
+  }
+
+  const p = freshProfiles.find(x => x.friendly_name === name);
   if (!p) return;
-  
+
   const brandKey = p.brand || 'generic_other';
   const activeMode = p.protocol_mode;
-  
+
   // Set default hint based on brand
   let hintText = '';
   if (brandKey === 'generic_other') {
@@ -1411,53 +1425,40 @@ function updateProfileStatusUI() {
       statusEl.style.display = 'none';
     }
   }
-  
+
   // Now append success/failure status
   const statusInfo = lastQueryStatus[name];
   if (statusInfo) {
     if (statusInfo.success) {
-      // Calculate relative time
       const diffMs = Date.now() - statusInfo.timestamp;
       const diffSecs = Math.floor(diffMs / 1000);
       let relativeTime = 'Just now';
-      if (diffSecs >= 1800) { // 30 min
-        relativeTime = '30 min ago';
-      } else if (diffSecs >= 600) { // 10 min
-        relativeTime = '10 min ago';
-      } else if (diffSecs >= 300) { // 5 min
-        relativeTime = '5 min ago';
-      } else if (diffSecs >= 120) { // 2 min
-        relativeTime = '2 min ago';
-      } else if (diffSecs >= 60) { // 1 min
-        relativeTime = '1 min ago';
-      } else if (diffSecs >= 30) { // 30 sec
-        relativeTime = '30 sec ago';
-      }
-      
+      if (diffSecs >= 1800) relativeTime = '30 min ago';
+      else if (diffSecs >= 600) relativeTime = '10 min ago';
+      else if (diffSecs >= 300) relativeTime = '5 min ago';
+      else if (diffSecs >= 120) relativeTime = '2 min ago';
+      else if (diffSecs >= 60) relativeTime = '1 min ago';
+      else if (diffSecs >= 30) relativeTime = '30 sec ago';
       hintText += `\n<span style="color: var(--green); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px;">Updated: ${relativeTime}</span>`;
       statusEl.style.borderColor = 'rgba(74,222,128,0.2)';
       statusEl.style.background = 'rgba(74,222,128,0.06)';
-      // Reset color of svg icon to green
       const icon = statusEl.querySelector('svg');
       if (icon) icon.setAttribute('stroke', 'var(--green)');
     } else {
-      // Failed!
       const errorMsg = statusInfo.error || 'Connection failed. Device may be offline or out of range.';
       hintText += `\n<span style="color: var(--red); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px;">${errorMsg}</span>`;
       statusEl.style.borderColor = 'rgba(248,113,113,0.3)';
       statusEl.style.background = 'rgba(248,113,113,0.08)';
-      // Reset color of svg icon to red
       const icon = statusEl.querySelector('svg');
       if (icon) icon.setAttribute('stroke', 'var(--red)');
     }
   } else {
-    // Normal style (blueish border / background)
     statusEl.style.borderColor = 'rgba(129,140,248,0.18)';
     statusEl.style.background = 'rgba(129,140,248,0.08)';
     const icon = statusEl.querySelector('svg');
     if (icon) icon.setAttribute('stroke', '#818cf8');
   }
-  
+
   textEl.innerHTML = hintText.replace(/\n/g, '<br>');
 }
 
@@ -1810,6 +1811,13 @@ if (btnCreateProfile) {
       resetProfileForm();
       showNotificationToast(successMsg);
 
+      if (profileCreatedMsg) {
+        profileCreatedMsg.innerHTML = `The profile <strong>${escapeHtml(savedName || friendlyName)}</strong> has been successfully registered. Connection tracking, battery telemetry monitoring, and automatic media controls are now active for this device.`;
+      }
+      if (profileCreatedDialog) {
+        profileCreatedDialog.hidden = false;
+      }
+
       if (savedName) {
         await selectActiveProfile(savedName);
         if (currentDeviceName === savedName) {
@@ -1819,7 +1827,7 @@ if (btnCreateProfile) {
             select.value = savedName;
             select.dispatchEvent(new Event('change'));
           }
-          retryProfileConnection(savedName);
+          retryProfileConnection && retryProfileConnection(savedName);
         }
       }
     } catch (err) {
@@ -1902,6 +1910,20 @@ importDataBtn?.addEventListener('click', () => {
 importDataFile?.addEventListener('change', () => {
   const file = importDataFile.files?.[0];
   if (file) importAllDataFromFile(file);
+});
+
+profileCreatedClose?.addEventListener('click', () => {
+  if (profileCreatedDialog) profileCreatedDialog.hidden = true;
+});
+profileCreatedGotoDashboard?.addEventListener('click', () => {
+  if (profileCreatedDialog) profileCreatedDialog.hidden = true;
+  if (setupDialog) setupDialog.hidden = true;
+  navigateToPage('dashboard');
+});
+profileCreatedDialog?.addEventListener('click', (e) => {
+  if (e.target === profileCreatedDialog) {
+    profileCreatedDialog.hidden = true;
+  }
 });
 
 // Check build mode (debug vs release) to show/hide debug tag
@@ -3566,7 +3588,7 @@ async function loadHistory() {
   rows.forEach(r => {
     const tr = document.createElement('tr');
     const start = prettyTimestamp(r.session_start);
-    const end = r.session_end ? prettyTimestamp(r.session_end) : '—';
+    const end = r.session_end ? prettyTimestamp(r.session_end) : '<span style="color: var(--accent); font-weight: 600; font-style: italic;">Active Session</span>';
     const interrupted = r.interrupted === 1 || r.interrupted === true;
     const redStyle = interrupted ? 'color:#f87171;' : '';
     tr.innerHTML = `
@@ -4022,7 +4044,7 @@ function bdRenderDetail(bd, container) {
         </div>
         <div class="bd-info-item">
           <span class="bd-info-label">End</span>
-          <span class="bd-info-value" style="font-size:12px;">${s.session_end ? bdFmtDate(s.session_end) : '—'}</span>
+          <span class="bd-info-value" style="font-size:12px;">${s.session_end ? bdFmtDate(s.session_end) : '<span style="color: var(--accent); font-weight: 600; font-style: italic;">Active Session</span>'}</span>
         </div>
         <div class="bd-info-item">
           <span class="bd-info-label">Connected</span>

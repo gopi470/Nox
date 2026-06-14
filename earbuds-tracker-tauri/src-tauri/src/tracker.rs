@@ -448,10 +448,15 @@ impl Tracker {
                     });
                 }
 
-                // Hide window when earbuds connect
+                // Hide window when earbuds connect, except for the very first connection/session
+                // of a newly created profile so the user can observe the initial telemetry.
                 use tauri::Manager;
-                if let Some(win) = app_handle_conn.get_webview_window("main") {
-                    win.hide().ok();
+                let dev_name = tracker_conn.get_device_name();
+                let is_first_session = crate::db::get_session_count_for_device(&dev_name) <= 1;
+                if !is_first_session {
+                    if let Some(win) = app_handle_conn.get_webview_window("main") {
+                        win.hide().ok();
+                    }
                 }
             },
             move || {
