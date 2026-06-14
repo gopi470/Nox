@@ -1,8 +1,8 @@
 # Nox
 
-A lightweight Windows background tracking utility and desktop dashboard for monitoring Bluetooth earbuds connection time, active media playback duration, and battery levels.
+A lightweight Windows background tracking utility and desktop dashboard for monitoring connection time, active media playback duration, and battery levels for Bluetooth earbuds.
 
-Designed for **Nothing** and **CMF** earbuds, with development and testing primarily focused on the **CMF Buds 2a**. Built using **Rust**, **Tauri (v2)**, and **SQLite**.
+Designed as a tracker supporting custom profile creation for **most Bluetooth earbuds** (via standard GATT battery service, SPP protocols, and custom UUIDs), with out-of-the-box support and optimized profiles for **Nothing** and **CMF** devices (like the **CMF Buds 2a**). Built using **Rust**, **Tauri (v2)**, and **SQLite**.
 
 ---
 
@@ -17,33 +17,26 @@ On the release page, look in the **Assets** section for the `.msi` or `.exe` ins
 ---
 ## Note
 
-> Nox is currently distributed as an unsigned Windows application.
+> **Security Warning**: As an unsigned, low-distribution utility, newly released builds of Nox may trigger generic SmartScreen/antivirus warnings (e.g., `Trojan:Win32/Bearfoos.A!ml`). If flagged by Windows Defender, select **Allow on device** under *Protection history* in Windows Security. For SmartScreen blocks, click **More info** -> **Run anyway**.
 >
-> Because it interacts with Bluetooth devices, monitors audio sessions, stores usage statistics, and can optionally start automatically with Windows, Microsoft Defender SmartScreen or antivirus products may display warnings or machine-learning-based detections on newly released builds.
->
-> These detections can occur with low-distribution or unsigned applications and do not automatically indicate malicious behavior. Always verify downloads originate from the official GitHub Releases page.
->
-> For transparency, the complete source code is publicly available in this repository and can be reviewed or built from source.
->
-> Future releases may include code signing to improve trust and reduce SmartScreen and antivirus warnings.
->
+> For more details on why Windows Defender flags unsigned Tauri binaries, see this [Tauri GitHub issue on antivirus false positives](https://github.com/tauri-apps/tauri/issues/2486).
+
 ---
 
 ## Key Features
 
-- **Real-Time Telemetry**: Queries Left/Right earbud and Charging Case battery percentages and charging states using a native WinRT RFCOMM socket SPP implementation.
-- **Background Tracking**: Silently monitors connection presence (PnP query) and media playback (WASAPI session peak meters) with a 5-second silence grace filter.
-- **Audio App Attribution**: Logs and details specific application audio usage (e.g., Spotify, Chrome) during sessions.
-- **Interactive Analytics**: 
-  - Dynamic daily usage rings, active equalizer animations, and consecutive active listening streak calculations.
-  - Interactive battery drain line charts with normalized grids, hover guidelines, and date-aware bin-packing pagination.
-- **Session Breakdown Directory**: Scrollable connection history with note editing, detailed app audio usage breakdown, and CSV/JSON exporting.
-- **System Automation & Utilities**:
-  - **Autopause**: Automatically pauses system media playback when earbuds disconnect.
-  - **Single Instance**: Singleton instance locking to prevent duplicate tray processes.
-  - **Auto-Backup**: Schedules automatic JSON database backups to local storage and Downloads.
-  - **Secure Purging**: Protects database resets using Windows user password authentication.
-
+- **Custom Earbud Profiles**: Create and switch custom profiles for most Bluetooth earbuds with vendor-specific protocol overrides (GATT vs. SPP).
+- **MAC Address Binding**: Binds profiles to unique Bluetooth hardware MAC addresses to prevent profile collision.
+- **Real-Time Telemetry**: Left/Right earbud & case battery percentages and charging states (via WinRT RFCOMM socket SPP or standard GATT BAS).
+- **Automatic Protocol Probing**: Auto-detects RFCOMM SPP vs. GATT capabilities on first connection and persists the chosen mode to bypass subsequent probing.
+- **Background Tracking**: Silent connection presence and media playback monitoring via WASAPI peak meters (250ms polling, 2s silence grace filter).
+- **Universal Autopause**: Instantaneously pauses all active media (Spotify, Chrome/Edge, VLC, etc.) via WinRT SMTC upon earbud disconnection.
+- **Audio App Attribution**: Logs exact foreground process names generating audio playback during active tracking sessions.
+- **Interactive Analytics**: Daily usage rings, listening streak tracking, dynamic battery drain line charts, and hardware Bluetooth radio status badge.
+- **Session History & Exports**: Detailed logs with user-editable notes, per-app breakdown lists, and CSV/JSON exporting.
+- **Diagnostics Query Logger**: Real-time event logger showing detailed request/response diagnostic timestamps and protocol logs.
+- **Custom Auto-Backup Schedule**: Configurable hourly scheduler for database exports (daily, weekly, monthly, or on startup) to `Downloads`.
+- **Security & Tray Control**: Singleton instance locking to prevent duplicate processes, close-to-tray execution, and password-protected data resets.
 
 ---
 
@@ -70,9 +63,10 @@ Nox operates as a lightweight, dual-process desktop utility designed to run cont
 
 ### 1. **Tauri Backend (Rust)**
 Runs silently as a background service:
-- **Presence & Connection Monitoring**: Tracks the connection/disconnection state of paired Bluetooth devices by querying Windows PnP devices.
-- **Audio Session Tracker**: Monitored via Windows WASAPI session peak meters to measure active playback time with a 5-second silence grace filter.
-- **Battery Polling Service**: Runs a background polling thread that opens a WinRT RFCOMM socket connection to the custom Bluetooth SPP service UUID, queries battery statuses, and caches the results.
+- **Presence & Connection Monitoring**: Tracks the connection/disconnection state of paired Bluetooth devices using an optimized 500ms polling interval. Combines low-overhead active WASAPI endpoint scanning with throttled PnP checks (every 3 seconds) for a zero-CPU footprint.
+- **Audio Session Tracker**: Monitored via Windows WASAPI session peak meters to measure active playback time. Polling is done every 250ms, with 500ms start activation and a 2-second silence grace filter.
+- **Battery Polling Service**: Runs a background polling thread that connects to earbuds via WinRT RFCOMM socket SPP or GATT direct services, caching battery stats periodically.
+- **Universal Autopause**: Automatically executes concurrent WinRT SMTC pause commands to all active media applications (falling back to a virtual key event) when a device disconnect is detected.
 - **Database Engine**: Embeds an SQLite database to record session telemetry, process-specific audio usage, and daily logs.
 - **Auto-Backup Engine**: Automatically schedules database exports to JSON files inside `exports/` and the user's `Downloads/` directory.
 
@@ -160,5 +154,6 @@ To ensure immediate UI updates, the WebView2 client persists configurations and 
 
 ## License & Legal
 
+This project is licensed under the terms of the GNU General Public License v3.0 (GPL-3.0). See the [LICENSE](LICENSE) file for the full license text.
 
 This project is not affiliated with, sponsored by, or endorsed by **Nothing Technology Limited** or **CMF**. All brand names, logos, and trademarks are the property of their respective owners.
