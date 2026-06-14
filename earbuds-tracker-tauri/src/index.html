@@ -1073,7 +1073,7 @@
           
           <div style="margin-bottom: 12px; opacity: 0.85;">
             <label style="display: block; font-size: 11px; margin-bottom: 4px; font-weight: 600;">Bluetooth Device Name</label>
-            <input type="text" id="edit-profile-friendly-name" class="input-field" style="width: 100%; background: rgba(255,255,255,0.04); cursor: not-allowed;" readonly disabled>
+            <input type="text" id="edit-profile-friendly-name" class="input-field" style="width: 100%; background: rgba(255,255,255,0.04); cursor: not-allowed;" placeholder="No Profile Found" readonly disabled>
           </div>
           
           <div style="margin-bottom: 12px;">
@@ -1088,7 +1088,8 @@
           </div>
 
           <div style="display: flex; gap: 8px; margin-top: 16px;">
-            <button class="btn btn-danger" id="btn-delete-profile" style="width: 100%; font-size: 11px; padding: 7px 12px;">Delete Profile</button>
+            <button class="btn" id="btn-retry-profile-conn" style="flex: 1; font-size: 11px; padding: 7px 12px; border-color: var(--border);">Retry Connection</button>
+            <button class="btn btn-danger" id="btn-delete-profile" style="flex: 1; font-size: 11px; padding: 7px 12px;">Delete Profile</button>
           </div>
         </div>
 

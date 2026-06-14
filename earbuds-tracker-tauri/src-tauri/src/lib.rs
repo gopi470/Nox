@@ -989,10 +989,6 @@ pub fn run() {
     // Load unified settings. If `settings.json` is missing (older installs), fall back
     // to the legacy per-setting text files and persist a fresh `settings.json` so
     // subsequent launches use the unified storage.
-    let mut initial_device = "CMF Buds 2a".to_string();
-    let mut initial_interval = 300; // 5 minutes default
-    let mut initial_step = 5; // 5% default
-
     let mut settings = load_settings();
     let mut migrated_from_legacy = false;
 
@@ -1028,15 +1024,22 @@ pub fn run() {
         }
     }
 
-    if !settings.active_device.trim().is_empty() {
-        initial_device = settings.active_device.clone();
+    let initial_device = if settings.device_profiles.is_empty() {
+        "No Profile Found".to_string()
+    } else if !settings.active_device.trim().is_empty() {
+        settings.active_device.clone()
     } else if !settings.target_device.trim().is_empty() {
-        initial_device = settings.target_device.clone();
-    }
-    initial_interval = settings.battery_interval;
-    if settings.battery_step == 1 || settings.battery_step == 5 || settings.battery_step == 10 {
-        initial_step = settings.battery_step;
-    }
+        settings.target_device.clone()
+    } else {
+        settings.device_profiles[0].friendly_name.clone()
+    };
+
+    let initial_interval = settings.battery_interval;
+    let initial_step = if settings.battery_step == 1 || settings.battery_step == 5 || settings.battery_step == 10 {
+        settings.battery_step
+    } else {
+        5
+    };
 
     if migrated_from_legacy {
         save_settings_to_disk(&settings);

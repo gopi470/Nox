@@ -1330,6 +1330,117 @@ function populateBrandDropdowns() {
 }
 populateBrandDropdowns();
 
+const lastQueryStatus = {};
+
+function updateProfileStatusUI() {
+  const select = document.getElementById('profile-select-dropdown');
+  if (!select) return;
+  const name = select.value;
+  const statusEl = document.getElementById('edit-profile-proto-status');
+  const textEl = document.getElementById('edit-profile-proto-text');
+  if (!statusEl || !textEl) return;
+
+  if (!name || deviceProfiles.length === 0) {
+    statusEl.style.display = 'none';
+    textEl.innerHTML = '';
+    return;
+  }
+  
+  const p = deviceProfiles.find(x => x.friendly_name === name);
+  if (!p) return;
+  
+  const brandKey = p.brand || 'generic_other';
+  const activeMode = p.protocol_mode;
+  
+  // Set default hint based on brand
+  let hintText = '';
+  if (brandKey === 'generic_other') {
+    statusEl.style.display = 'flex';
+    hintText = 'Generic: will use Standard GATT BAS only (no SPP probe).';
+    if (activeMode) {
+      hintText += '\nCurrently using: Standard GATT BAS';
+    }
+  } else if (brandKey === 'apple_airpods') {
+    statusEl.style.display = 'flex';
+    hintText = 'Will sniff passive BLE advertisements (Company ID: 0x004C).';
+    if (activeMode) {
+      hintText += '\nCurrently using: BLE Sniffing';
+    }
+  } else {
+    const entry = PROTOCOL_DB.find(e => e.key === brandKey);
+    if (entry) {
+      statusEl.style.display = 'flex';
+      if (entry.status === 'Implemented ✓') {
+        hintText = `Will try Proprietary RFCOMM (${entry.brand}) first, fall back to GATT on failure.`;
+      } else {
+        hintText = `Protocol documented but not yet implemented — will probe SPP then fall back to GATT.`;
+      }
+      if (activeMode) {
+        let modeDisplay = 'Auto-Detect (Connecting...)';
+        if (activeMode === 'proprietary') {
+          modeDisplay = 'Proprietary RFCOMM';
+        } else if (activeMode === 'standard') {
+          modeDisplay = 'Standard GATT BAS';
+        }
+        hintText += `\nCurrently using: ${modeDisplay}`;
+      }
+    } else {
+      statusEl.style.display = 'none';
+    }
+  }
+  
+  // Now append success/failure status
+  const statusInfo = lastQueryStatus[name];
+  if (statusInfo) {
+    if (statusInfo.success) {
+      // Calculate relative time
+      const diffMs = Date.now() - statusInfo.timestamp;
+      const diffSecs = Math.floor(diffMs / 1000);
+      let relativeTime = 'Just now';
+      if (diffSecs >= 1800) { // 30 min
+        relativeTime = '30 min ago';
+      } else if (diffSecs >= 600) { // 10 min
+        relativeTime = '10 min ago';
+      } else if (diffSecs >= 300) { // 5 min
+        relativeTime = '5 min ago';
+      } else if (diffSecs >= 120) { // 2 min
+        relativeTime = '2 min ago';
+      } else if (diffSecs >= 60) { // 1 min
+        relativeTime = '1 min ago';
+      } else if (diffSecs >= 30) { // 30 sec
+        relativeTime = '30 sec ago';
+      }
+      
+      hintText += `\n<span style="color: var(--green); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px;">Updated: ${relativeTime}</span>`;
+      statusEl.style.borderColor = 'rgba(74,222,128,0.2)';
+      statusEl.style.background = 'rgba(74,222,128,0.06)';
+      // Reset color of svg icon to green
+      const icon = statusEl.querySelector('svg');
+      if (icon) icon.setAttribute('stroke', 'var(--green)');
+    } else {
+      // Failed!
+      const errorMsg = statusInfo.error || 'Connection failed. Device may be offline or out of range.';
+      hintText += `\n<span style="color: var(--red); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px;">${errorMsg}</span>`;
+      statusEl.style.borderColor = 'rgba(248,113,113,0.3)';
+      statusEl.style.background = 'rgba(248,113,113,0.08)';
+      // Reset color of svg icon to red
+      const icon = statusEl.querySelector('svg');
+      if (icon) icon.setAttribute('stroke', 'var(--red)');
+    }
+  } else {
+    // Normal style (blueish border / background)
+    statusEl.style.borderColor = 'rgba(129,140,248,0.18)';
+    statusEl.style.background = 'rgba(129,140,248,0.08)';
+    const icon = statusEl.querySelector('svg');
+    if (icon) icon.setAttribute('stroke', '#818cf8');
+  }
+  
+  textEl.innerHTML = hintText.replace(/\n/g, '<br>');
+}
+
+// Periodic status refresh
+setInterval(updateProfileStatusUI, 15000);
+
 function updateBrandHint(brandKey, statusElId, textElId, activeMode = null) {
   const statusEl = document.getElementById(statusElId);
   const textEl = document.getElementById(textElId);
@@ -1392,12 +1503,7 @@ if (profileSelectDropdown) {
     if (p) {
       document.getElementById('edit-profile-friendly-name').value = p.friendly_name;
       document.getElementById('edit-profile-brand').value = p.brand || 'generic_other';
-      updateBrandHint(
-        p.brand || 'generic_other',
-        'edit-profile-proto-status',
-        'edit-profile-proto-text',
-        p.protocol_mode
-      );
+      updateProfileStatusUI();
     }
   });
 }
@@ -1405,10 +1511,7 @@ if (profileSelectDropdown) {
 const editBrandEl = document.getElementById('edit-profile-brand');
 if (editBrandEl) {
   editBrandEl.addEventListener('change', () => {
-    const selectedName = profileSelectDropdown.value;
-    const p = deviceProfiles.find(x => x.friendly_name === selectedName);
-    const activeMode = p && p.brand === editBrandEl.value ? p.protocol_mode : 'auto';
-    updateBrandHint(editBrandEl.value, 'edit-profile-proto-status', 'edit-profile-proto-text', activeMode);
+    updateProfileStatusUI();
   });
 }
 
@@ -1425,6 +1528,10 @@ function populateProfileSelectDropdown() {
   const select = document.getElementById('profile-select-dropdown');
   if (!select) return;
   select.innerHTML = '';
+  
+  const btnRetry = document.getElementById('btn-retry-profile-conn');
+  const btnDelete = document.getElementById('btn-delete-profile');
+  
   if (deviceProfiles.length === 0) {
     const opt = document.createElement('option');
     opt.value = '';
@@ -1435,9 +1542,16 @@ function populateProfileSelectDropdown() {
     if (editFriendlyName) editFriendlyName.value = '';
     const editBrand = document.getElementById('edit-profile-brand');
     if (editBrand) editBrand.value = '';
-    updateBrandHint('', 'edit-profile-proto-status', 'edit-profile-proto-text');
+    updateProfileStatusUI();
+    
+    if (btnRetry) btnRetry.style.display = 'none';
+    if (btnDelete) btnDelete.style.display = 'none';
     return;
   }
+  
+  if (btnRetry) btnRetry.style.display = 'block';
+  if (btnDelete) btnDelete.style.display = 'block';
+  
   deviceProfiles.forEach(p => {
     const opt = document.createElement('option');
     opt.value = p.friendly_name;
@@ -1470,6 +1584,90 @@ function resetProfileForm() {
     brandInput.dispatchEvent(new Event('change'));
   }
   if (protoInput) protoInput.value = 'auto';
+}
+
+async function retryConnection(name) {
+  const btn = document.getElementById('btn-retry-profile-conn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Connecting...';
+  }
+  try {
+    const p = deviceProfiles.find(x => x.friendly_name === name);
+    if (!p) return;
+    
+    // Reset protocol mode back to 'auto' to trigger discovery
+    p.protocol_mode = 'auto';
+    await invoke('save_device_profile', { profile: p });
+    
+    // Reconfigure backend tracker for this device
+    const profile = await invoke('switch_active_profile', { name });
+    activeProfile = profile;
+    currentDeviceName = name;
+    
+    // Update UI elements
+    const nameEl = document.getElementById('active-earbud-name');
+    if (nameEl) nameEl.textContent = name;
+    
+    const nameSettingsEl = document.getElementById('active-earbud-name-settings');
+    if (nameSettingsEl) nameSettingsEl.textContent = name;
+    
+    const subEl = document.getElementById('dashboard-sub');
+    if (subEl) {
+      subEl.textContent = `Real-time connection monitoring for ${name}`;
+    }
+    
+    renderSwitcherDropdown();
+    updateBatteryCardLayout();
+    
+    // Clear last battery cache so it queries fresh
+    localStorage.removeItem('last-battery-info');
+    updateBatteryUI(null);
+    
+    showNotificationToast(`Retrying connection for ${name}...`);
+    
+    // Force poll battery immediately
+    const batteryInfo = await invoke('force_query_battery');
+    if (batteryInfo) {
+      updateBatteryUI(batteryInfo);
+      showNotificationToast(`Successfully connected to ${name}!`);
+      lastQueryStatus[name] = {
+        success: true,
+        timestamp: Date.now(),
+        error: null
+      };
+    } else {
+      showNotificationToast(`Connection to ${name} failed.`);
+      lastQueryStatus[name] = {
+        success: false,
+        timestamp: Date.now(),
+        error: p.brand === 'generic_other'
+          ? 'Standard GATT BAS query failed. The device may be disconnected, out of range, or does not support standard battery service.'
+          : 'SPP query and GATT fallback both failed. The device may be disconnected, out of range, or standard services are inaccessible.'
+      };
+    }
+    updateProfileStatusUI();
+    
+    await refreshSnapshot();
+    refreshActivePage();
+  } catch (err) {
+    console.error("Failed to retry connection", err);
+    showNotificationToast("Failed to retry connection.");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Retry Connection';
+    }
+  }
+}
+
+const btnRetryProfileConn = document.getElementById('btn-retry-profile-conn');
+if (btnRetryProfileConn) {
+  btnRetryProfileConn.addEventListener('click', async () => {
+    const select = document.getElementById('profile-select-dropdown');
+    if (!select || !select.value) return;
+    await retryConnection(select.value);
+  });
 }
 
 const btnDeleteProfile = document.getElementById('btn-delete-profile');
@@ -3028,6 +3226,14 @@ function updateBatteryUI(batteryInfo) {
     lastBatteryUpdateAt = batteryInfo.updated_at || Date.now();
     localStorage.setItem('last-battery-update-at', String(lastBatteryUpdateAt));
     localStorage.setItem('last-battery-info', JSON.stringify(batteryInfo));
+    if (currentDeviceName && currentDeviceName !== 'No Profile Found') {
+      lastQueryStatus[currentDeviceName] = {
+        success: true,
+        timestamp: lastBatteryUpdateAt,
+        error: null
+      };
+      updateProfileStatusUI();
+    }
   } else {
     const cached = localStorage.getItem('last-battery-info');
     if (cached) {
@@ -3042,7 +3248,7 @@ function updateBatteryUI(batteryInfo) {
   // Update dynamic device title in Nothing-style uppercase
   const titleEl = document.getElementById('battery-title-device');
   if (titleEl) {
-    let name = currentDeviceName.toUpperCase();
+    let name = (currentDeviceName || 'No Profile Found').toUpperCase();
     if (name.startsWith("CMF ")) {
       name = name.slice(4);
     }
