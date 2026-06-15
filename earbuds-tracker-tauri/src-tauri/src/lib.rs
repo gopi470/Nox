@@ -1109,6 +1109,7 @@ pub fn run() {
             // so subsequent connections skip the SPP probe and go straight to the right method.
             {
                 let tracker_ref = Arc::clone(&tracker);
+                let notify_handle = handle.clone();
                 *tracker.on_protocol_discovered.lock() = Some(Box::new(move |discovered: String| {
                     let dev = tracker_ref.get_device_name();
                     if dev.is_empty() { return; }
@@ -1120,6 +1121,8 @@ pub fn run() {
                             }
                         }
                     });
+                    // Emit state-changed event so the frontend loads the updated settings & layout
+                    let _ = notify_handle.emit("state-changed", ());
                 }));
             }
 

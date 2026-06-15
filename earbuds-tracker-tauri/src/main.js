@@ -1007,6 +1007,9 @@ if (switcherBadgeSettings) {
     
     if (dropdown) {
       dropdown.hidden = !dropdown.hidden;
+      if (!dropdown.hidden) {
+        renderSwitcherDropdown();
+      }
       if (container) container.classList.toggle('active', !dropdown.hidden);
     }
   });
@@ -1377,8 +1380,9 @@ async function updateProfileStatusUI() {
   // Always fetch fresh profile data from backend so protocol_mode is current
   let freshProfiles = deviceProfiles;
   try {
-    freshProfiles = await invoke('get_device_profiles');
-    deviceProfiles = freshProfiles;
+    const [active, profiles] = await invoke('get_device_profiles');
+    freshProfiles = profiles;
+    deviceProfiles = profiles;
   } catch (e) {
     console.warn('Could not refresh profiles for status UI', e);
   }
@@ -1418,6 +1422,11 @@ async function updateProfileStatusUI() {
           modeDisplay = 'Proprietary RFCOMM';
         } else if (activeMode === 'standard') {
           modeDisplay = 'Standard GATT BAS';
+        } else if (activeMode === 'auto') {
+          const isProfileConnected = (name === currentDeviceName) && lastConnected;
+          if (!isProfileConnected) {
+            modeDisplay = 'Connect earbuds to detect protocol';
+          }
         }
         hintText += `\nCurrently using: ${modeDisplay}`;
       }
@@ -1808,11 +1817,12 @@ if (btnCreateProfile) {
         ? `Profile created as "${savedName}" (two devices with same name — both registered).`
         : `Profile "${savedName || friendlyName}" created successfully!`;
       populateProfileSelectDropdown();
+      await refreshPairedDevicesList();
       resetProfileForm();
       showNotificationToast(successMsg);
 
       if (profileCreatedMsg) {
-        profileCreatedMsg.innerHTML = `The profile <strong>${escapeHtml(savedName || friendlyName)}</strong> has been successfully registered. Connection tracking, battery telemetry monitoring, and automatic media controls are now active for this device.`;
+        profileCreatedMsg.innerHTML = `Profile <strong>${escapeHtml(savedName || friendlyName)}</strong> has been registered. Go to the dashboard to view live battery levels and stats.`;
       }
       if (profileCreatedDialog) {
         profileCreatedDialog.hidden = false;
@@ -1827,7 +1837,9 @@ if (btnCreateProfile) {
             select.value = savedName;
             select.dispatchEvent(new Event('change'));
           }
-          retryProfileConnection && retryProfileConnection(savedName);
+          if (typeof retryConnection === 'function') {
+            retryConnection(savedName);
+          }
         }
       }
     } catch (err) {
@@ -1985,7 +1997,97 @@ document.querySelectorAll('.nav-item').forEach(item => {
   });
 });
 
-// Click handlers for cards on the dashboard to allow seamless navigation
+// ── Setup Info Page ────────────────────────────────────────────────────────────
+(function initSetupInfoPage() {
+  const STORAGE_KEY = 'setup-info-hidden';
+  const navEl = document.getElementById('nav-setup-info');
+  const toggle = document.getElementById('setup-info-hide-toggle');
+  const confirmDialog = document.getElementById('hide-setup-info-dialog');
+  const cancelBtn = document.getElementById('hide-setup-info-cancel');
+  const confirmBtn = document.getElementById('hide-setup-info-confirm');
+
+  // Read stored state (true = permanently hidden)
+  const isHidden = localStorage.getItem(STORAGE_KEY) === 'true';
+
+  function applyHiddenState(hidden) {
+    if (navEl) navEl.style.display = hidden ? 'none' : '';
+    // If currently on this page and we're hiding it, navigate away
+    if (hidden) {
+      const pageEl = document.getElementById('page-setup-info');
+      if (pageEl && pageEl.classList.contains('active')) {
+        navigateToPage('dashboard');
+      }
+    }
+  }
+
+  // Apply on load
+  applyHiddenState(isHidden);
+  if (toggle) {
+    toggle.checked = isHidden;
+    // If already hidden, disable the toggle visually (can't un-hide without reset)
+    if (isHidden) {
+      toggle.disabled = true;
+      const label = document.getElementById('setup-info-hide-toggle-label');
+      if (label) label.style.opacity = '0.45';
+    }
+  }
+
+  // Toggle change — intercept before it visually commits
+  if (toggle && !isHidden) {
+    toggle.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        // Revert immediately, let user confirm first
+        e.target.checked = false;
+        if (confirmDialog) confirmDialog.hidden = false;
+      }
+    });
+  }
+
+  // Confirmation dialog: Cancel
+  if (cancelBtn && confirmDialog) {
+    cancelBtn.addEventListener('click', () => {
+      confirmDialog.hidden = true;
+      if (toggle) toggle.checked = false;
+    });
+  }
+
+  // Confirmation dialog: Confirm hide
+  if (confirmBtn && confirmDialog) {
+    confirmBtn.addEventListener('click', () => {
+      confirmDialog.hidden = true;
+      localStorage.setItem(STORAGE_KEY, 'true');
+      if (toggle) {
+        toggle.checked = true;
+        toggle.disabled = true;
+        const label = document.getElementById('setup-info-hide-toggle-label');
+        if (label) label.style.opacity = '0.45';
+      }
+      applyHiddenState(true);
+    });
+  }
+
+  // Close confirmation dialog on backdrop click
+  if (confirmDialog) {
+    confirmDialog.addEventListener('click', (e) => {
+      if (e.target === confirmDialog) {
+        confirmDialog.hidden = true;
+        if (toggle) toggle.checked = false;
+      }
+    });
+  }
+
+  // Quick-action buttons inside the page
+  const gotoSettings = document.getElementById('setup-info-goto-settings');
+  if (gotoSettings) {
+    gotoSettings.addEventListener('click', () => navigateToPage('settings'));
+  }
+  const gotoDashboard = document.getElementById('setup-info-goto-dashboard');
+  if (gotoDashboard) {
+    gotoDashboard.addEventListener('click', () => navigateToPage('dashboard'));
+  }
+})();
+
+
 const connCard = document.getElementById('conn-time')?.closest('.time-card');
 if (connCard) {
   connCard.addEventListener('click', () => navigateToPage('history'));
@@ -3700,6 +3802,14 @@ document.getElementById('auth-confirm').addEventListener('click', async () => {
         localStorage.removeItem('daily-playback-cache-secs');
         localStorage.removeItem('last-battery-info');
         localStorage.removeItem('last-battery-update-at');
+        // Re-show setup info page (it was globally hidden, restore it on full reset)
+        localStorage.removeItem('setup-info-hidden');
+        const navSetupInfo = document.getElementById('nav-setup-info');
+        if (navSetupInfo) navSetupInfo.style.display = '';
+        const setupToggle = document.getElementById('setup-info-hide-toggle');
+        if (setupToggle) { setupToggle.checked = false; setupToggle.disabled = false; }
+        const setupToggleLabel = document.getElementById('setup-info-hide-toggle-label');
+        if (setupToggleLabel) setupToggleLabel.style.opacity = '';
         updateBatteryUI(null);
         statsHistoryBoundsPromise = null;
         statsWeekOffset = 0;
@@ -3749,7 +3859,10 @@ authPwdInput && authPwdInput.addEventListener('keydown', (e) => {
 });
 
 // ── Tauri event: backend pushed state-changed ─────────────────────────────────
-event.listen('state-changed', () => refreshSnapshot());
+event.listen('state-changed', async () => {
+  await loadDeviceProfiles();
+  refreshSnapshot();
+});
 
 // ── Polling timer (1 s) as safety net ────────────────────────────────────────
 setInterval(refreshSnapshot, 1000);
