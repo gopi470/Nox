@@ -393,7 +393,7 @@ code {
 }
 .dialog-overlay[hidden] { display: none; }
 /* Stack sub-dialogs/confirmations/database views on top of main dialogs */
-#dialog, #auth-dialog, #reset-success-dialog, #switch-profile-dialog, #import-info-dialog, #import-success-dialog, #export-info-dialog, #export-success-dialog, #protocol-db-dialog {
+#dialog, #auth-dialog, #reset-success-dialog, #switch-profile-dialog, #import-info-dialog, #import-success-dialog, #export-info-dialog, #export-success-dialog, #protocol-db-dialog, #profile-created-dialog, #hide-setup-info-dialog {
   z-index: 200;
 }
 .dialog-box {
@@ -1780,5 +1780,88 @@ body.fs-large .dialog-title { font-size: 18px; }
 body.fs-large .dialog-msg { font-size: 15px; }
 body.fs-large .btn, body.fs-large .input-field { font-size: 15px; }
 
+
+/* ── Setup Info Page ──────────────────────────────────────────────────────── */
+.setup-step-card {
+  margin-bottom: 12px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.setup-step-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+
+.setup-step-header {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.setup-step-number {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.setup-step-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 5px;
+  line-height: 1.3;
+}
+
+.setup-step-desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.setup-step-desc strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.setup-step-desc em {
+  color: var(--text);
+  font-style: normal;
+  font-weight: 500;
+}
+
+.setup-step-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  line-height: 1.5;
+}
+
+.setup-step-tip svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+body.font-ndot .setup-step-title {
+  font-family: 'NDot', monospace;
+  font-weight: 400;
+  letter-spacing: 0.2px;
+  word-spacing: 3px;
+}
 
 
