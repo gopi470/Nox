@@ -4,6 +4,8 @@ A lightweight Windows background tracking utility and desktop dashboard for moni
 
 Designed as a tracker supporting custom profile creation for **most Bluetooth earbuds** (via standard GATT battery service, SPP protocols, and custom UUIDs), with out-of-the-box support and optimized profiles for **Nothing** and **CMF** devices (like the **CMF Buds 2a**). Built using **Rust**, **Tauri (v2)**, and **SQLite**.
 
+![Nox Dashboard](docs/screenshots/dashboard.png)
+
 ---
 
 ## Installation
@@ -20,6 +22,53 @@ On the release page, look in the **Assets** section for the `.msi` or `.exe` ins
 > **Security Warning**: As an unsigned, low-distribution utility, newly released builds of Nox may trigger generic SmartScreen/antivirus warnings (e.g., `Trojan:Win32/Bearfoos.A!ml`). If flagged by Windows Defender, select **Allow on device** under *Protection history* in Windows Security. For SmartScreen blocks, click **More info** -> **Run anyway**.
 >
 > For more details on why Windows Defender flags unsigned Tauri binaries, see this [Tauri GitHub issue on antivirus false positives](https://github.com/tauri-apps/tauri/issues/2486).
+
+---
+
+## Interface Showcase
+
+<table width="100%">
+  <tr>
+    <td width="50%" align="center">
+      <b>Battery History & Telemetry (SPP Mode)</b><br/>
+      <img src="docs/screenshots/battery1.png" width="100%"/>
+    </td>
+    <td width="50%" align="center">
+      <b>Battery History & Telemetry (GATT Mode)</b><br/>
+      <img src="docs/screenshots/battery2.png" width="100%"/>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <b>Statistics & Analytics Dashboard</b><br/>
+      <img src="docs/screenshots/statistics.png" width="100%"/>
+    </td>
+    <td width="50%" align="center">
+      <b>Session History Logs</b><br/>
+      <img src="docs/screenshots/history.png" width="100%"/>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <b>Session Breakdown Details</b><br/>
+      <img src="docs/screenshots/session_breakdown.png" width="100%"/>
+    </td>
+    <td width="50%" align="center">
+      <b>Manage Profile Settings</b><br/>
+      <img src="docs/screenshots/setings_manage_profiles.png" width="100%"/>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <b>General Settings</b><br/>
+      <img src="docs/screenshots/settings1.png" width="100%"/>
+    </td>
+    <td width="50%" align="center">
+      <b>Advanced Settings</b><br/>
+      <img src="docs/screenshots/settings2.png" width="100%"/>
+    </td>
+  </tr>
+</table>
 
 ---
 
@@ -134,19 +183,12 @@ A modern dark-themed WebView2 interface accessed from the system tray:
 
 ## Configuration Details
 
-All application settings, preferences, and logs are stored in the user's local AppData directory: `%APPDATA%\EarbudsTracker\`.
+All application files are stored in the user's local AppData directory (`%APPDATA%\EarbudsTracker\`):
 
-### File Locations
-
-- **Database Path**: All session usage history, audio peaks, and daily stats are persisted to a local SQLite database:
-  `%APPDATA%\EarbudsTracker\tracker.db`
-- **Application Settings**: Preferences (such as target device name, polling interval, battery step size, autostart, desktop notifications, auto-backup, and autopause settings) are saved in a unified JSON structure:
-  `%APPDATA%\EarbudsTracker\settings.json`
-- **Auto-Backup State**: The timestamp of the last completed auto-backup run is saved in a sibling configuration file:
-  `%APPDATA%\EarbudsTracker\auto_backup_state.json`
-### Frontend State
-
-To ensure immediate UI updates, the WebView2 client persists configurations and cache parameters in the browser's `localStorage` (including graph pagination limits, last-known battery levels, daily playback duration cache, daily goals, device name mapping, notification preferences, autostart state, and active UI font sizing).
+- **`tracker.db`**: Local SQLite database storing session history, audio peaks, and daily usage statistics.
+- **`settings.json`**: Global configurations (device names, intervals, battery step size, notifications, and autostart).
+- **`auto_backup_state.json`**: Tracking details for the automated hourly backup scheduler.
+- **Browser `localStorage`**: Persists client-side UI preferences (graph pagination, goals, and font sizing) for instant loads.
 
 
 
