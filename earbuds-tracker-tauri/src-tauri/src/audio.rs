@@ -4,9 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use log::{debug, info};
 
-const POLL_INTERVAL: Duration = Duration::from_secs(1);
+const POLL_INTERVAL: Duration = Duration::from_millis(250);
 const SILENCE_THRESHOLD: f32 = 0.001;
-const GRACE_CHECKS: u32 = 5;
+const GRACE_CHECKS: u32 = 8;
 
 use parking_lot::RwLock;
 

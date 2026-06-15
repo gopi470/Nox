@@ -131,6 +131,16 @@ pub fn open_session(start: &NaiveDateTime, device_name: &str) -> i64 {
     db.last_insert_rowid()
 }
 
+pub fn get_session_count_for_device(device_name: &str) -> i64 {
+    let db = conn().lock();
+    db.query_row(
+        "SELECT COUNT(*) FROM sessions WHERE device_name = ?1",
+        params![device_name],
+        |row| row.get(0),
+    )
+    .unwrap_or(0)
+}
+
 pub fn close_session(id: i64, end: &NaiveDateTime, connected: f64, playback: f64) {
     let db = conn().lock();
     db.execute(

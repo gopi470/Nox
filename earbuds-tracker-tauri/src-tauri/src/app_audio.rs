@@ -14,9 +14,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-const POLL_INTERVAL: Duration = Duration::from_secs(1);
+const POLL_INTERVAL: Duration = Duration::from_millis(250);
 const SILENCE_THRESHOLD: f32 = 0.001;
-const GRACE_CHECKS: u32 = 5;
+const GRACE_CHECKS: u32 = 8;
 
 pub struct AppAudioMonitor {
     device_name: Arc<RwLock<String>>,
@@ -516,16 +516,53 @@ pub fn perform_autopause() {
 
     info!("Autopause: Triggering media pause.");
 
-    #[link(name = "user32")]
-    extern "system" {
-        fn keybd_event(b_vk: u8, b_scan: u8, dw_flags: u32, dw_extra_info: usize);
+    let mut smtc_paused_any = false;
+
+    let smtc_run = || -> Result<bool, windows::core::Error> {
+        use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
+        let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.get()?;
+        let sessions = manager.GetSessions()?;
+        let size = sessions.Size()?;
+        let mut paused_count = 0;
+        for i in 0..size {
+            if let Ok(session) = sessions.GetAt(i) {
+                if let Ok(op) = session.TryPauseAsync() {
+                    if let Ok(success) = op.get() {
+                        if success {
+                            paused_count += 1;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(paused_count > 0)
+    };
+
+    match smtc_run() {
+        Ok(true) => {
+            info!("Autopause: Successfully paused media sessions via WinRT SMTC.");
+            smtc_paused_any = true;
+        }
+        Ok(false) => {
+            info!("Autopause: No active SMTC media sessions could be paused. Will use keyboard fallback.");
+        }
+        Err(err) => {
+            info!("Autopause: SMTC query failed: {:?}. Will use keyboard fallback.", err);
+        }
     }
 
-    unsafe {
-        const VK_MEDIA_PLAY_PAUSE: u8 = 0xB3;
-        const KEYEVENTF_KEYUP: u32 = 2;
-        keybd_event(VK_MEDIA_PLAY_PAUSE, 0, 0, 0);
-        keybd_event(VK_MEDIA_PLAY_PAUSE, 0, KEYEVENTF_KEYUP, 0);
+    if !smtc_paused_any {
+        #[link(name = "user32")]
+        extern "system" {
+            fn keybd_event(b_vk: u8, b_scan: u8, dw_flags: u32, dw_extra_info: usize);
+        }
+
+        unsafe {
+            const VK_MEDIA_PLAY_PAUSE: u8 = 0xB3;
+            const KEYEVENTF_KEYUP: u32 = 2;
+            keybd_event(VK_MEDIA_PLAY_PAUSE, 0, 0, 0);
+            keybd_event(VK_MEDIA_PLAY_PAUSE, 0, KEYEVENTF_KEYUP, 0);
+        }
     }
 }
 

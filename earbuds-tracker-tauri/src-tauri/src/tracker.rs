@@ -181,15 +181,15 @@ impl Tracker {
             format!("Polling {}", dev),
         );
         let previous_bat = self.battery_cache.lock().clone();
-        let (bat_opt, effective_mode) = crate::spp::read_battery(&dev, mac.as_deref(), &brand, &protocol);
+        let (bat_opt, effective_mode) = crate::spp::read_battery(&dev, mac.as_deref(), &brand, &protocol, self.is_connected());
         
         // If device changed during query, abort immediately without updating cache or DB
         if self.get_device_name() != dev {
             return None;
         }
 
-        // If auto-discovery just ran, persist the discovered method
-        if protocol == "auto" {
+        // If auto-discovery just ran, persist the discovered method ONLY if a battery reading was retrieved successfully
+        if protocol == "auto" && bat_opt.is_some() && effective_mode != "auto" {
             self.set_protocol_mode(effective_mode);
             if let Some(ref cb) = *self.on_protocol_discovered.lock() {
                 cb(effective_mode.to_string());
@@ -380,13 +380,14 @@ impl Tracker {
                                 current_mac.as_deref(),
                                 &current_brand,
                                 &current_proto,
+                                tracker_clone.is_connected(),
                             );
                             // If device changed during query, abort immediately
                             if tracker_clone.get_device_name() != session_dev_name || tracker_clone.get_active_session_id() != Some(session_id) {
                                 break;
                             }
-                            // First-try discovery: persist the working method to the profile
-                            if current_proto == "auto" {
+                            // First-try discovery: persist the working method to the profile ONLY if a battery reading was retrieved successfully
+                            if current_proto == "auto" && bat_opt.is_some() && effective_mode != "auto" {
                                 tracker_clone.set_protocol_mode(effective_mode);
                                 if let Some(ref cb) = *tracker_clone.on_protocol_discovered.lock() {
                                     cb(effective_mode.to_string());
@@ -448,10 +449,15 @@ impl Tracker {
                     });
                 }
 
-                // Hide window when earbuds connect
+                // Hide window when earbuds connect, except for the very first connection/session
+                // of a newly created profile so the user can observe the initial telemetry.
                 use tauri::Manager;
-                if let Some(win) = app_handle_conn.get_webview_window("main") {
-                    win.hide().ok();
+                let dev_name = tracker_conn.get_device_name();
+                let is_first_session = crate::db::get_session_count_for_device(&dev_name) <= 1;
+                if !is_first_session {
+                    if let Some(win) = app_handle_conn.get_webview_window("main") {
+                        win.hide().ok();
+                    }
                 }
             },
             move || {

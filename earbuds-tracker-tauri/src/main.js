@@ -147,8 +147,9 @@ let startupEnabled = localStorage.getItem('startup-enabled') === 'true';
 let autopauseEnabled = localStorage.getItem('autopause-enabled') !== 'false';
 let activeProfile = null;
 let deviceProfiles = [];
-let currentDeviceName = 'CMF Buds 2a';
+let currentDeviceName = '';
 let fontStyle = localStorage.getItem('font-style') || 'default';
+let fontSize = localStorage.getItem('font-size') || 'default';
 let batteryPollIntervalSec = 10;
 
 
@@ -192,6 +193,7 @@ const startupToggle = document.getElementById('startup-toggle');
 const autopauseToggle = document.getElementById('autopause-toggle');
 const deviceNameInput = document.getElementById('device-name-input');
 const fontStyleSelect = document.getElementById('font-style-select');
+const fontSizeSelect = document.getElementById('font-size-select');
 const batteryStepSelect = document.getElementById('battery-step-select');
 const importDataFile = document.getElementById('import-data-file');
 const exportDataBtn = document.getElementById('export-data-btn');
@@ -211,6 +213,11 @@ const exportSuccessClose = document.getElementById('export-success-close');
 const resetSuccessDialog = document.getElementById('reset-success-dialog');
 const resetSuccessMsg = document.getElementById('reset-success-msg');
 const resetSuccessClose = document.getElementById('reset-success-close');
+
+const profileCreatedDialog = document.getElementById('profile-created-dialog');
+const profileCreatedMsg = document.getElementById('profile-created-msg');
+const profileCreatedClose = document.getElementById('profile-created-close');
+const profileCreatedGotoDashboard = document.getElementById('profile-created-goto-dashboard');
 const graphDurationSelect = document.getElementById('graph-duration');
 const graphDurationNote = document.getElementById('graph-duration-note');
 const graphGroupSelect = document.getElementById('graph-group');
@@ -228,6 +235,19 @@ function applyFontStyle(value) {
   document.body.classList.toggle('font-ndot', mode === 'ndot');
   if (fontStyleSelect && fontStyleSelect.value !== mode) {
     fontStyleSelect.value = mode;
+  }
+}
+
+function applyFontSize(value) {
+  const size = ['small', 'medium', 'large'].includes(value) ? value : 'default';
+  fontSize = size;
+  localStorage.setItem('font-size', size);
+  document.body.classList.remove('fs-small', 'fs-medium', 'fs-large');
+  if (size !== 'default') {
+    document.body.classList.add(`fs-${size}`);
+  }
+  if (fontSizeSelect && fontSizeSelect.value !== size) {
+    fontSizeSelect.value = size;
   }
 }
 
@@ -323,6 +343,14 @@ if (fontStyleSelect) {
   fontStyleSelect.value = fontStyle;
   fontStyleSelect.addEventListener('change', (e) => {
     applyFontStyle(e.target.value);
+  });
+}
+
+applyFontSize(fontSize);
+if (fontSizeSelect) {
+  fontSizeSelect.value = fontSize;
+  fontSizeSelect.addEventListener('change', (e) => {
+    applyFontSize(e.target.value);
   });
 }
 async function initDeviceNameDatalist() {
@@ -530,16 +558,11 @@ async function initAutoBackupSettings() {
 
 initAutoBackupSettings();
 
-// Populate the About section's version dynamically from the Tauri config.
+// Hardcode the About section's version to 1.0.0
 async function initAppVersion() {
   const el = document.getElementById('app-version');
   if (!el) return;
-  try {
-    const version = await invoke('get_app_version');
-    if (version) el.textContent = String(version);
-  } catch (e) {
-    console.error('get_app_version failed', e);
-  }
+  el.textContent = '1.0.0';
 }
 initAppVersion();
 
@@ -663,6 +686,7 @@ function buildSettingsBackup() {
     autopause_enabled: autopauseEnabled,
     target_device: currentDeviceName,
     font_style: fontStyle,
+    font_size: fontSize,
     battery_interval_secs: batteryPollIntervalSec,
     battery_step: parseInt(batteryStepSelect?.value || '5', 10) || 5,
   };
@@ -724,6 +748,10 @@ async function restoreSettingsFromBackup(settings = {}) {
     applyFontStyle(settings.font_style.trim());
   }
 
+  if (typeof settings.font_size === 'string' && settings.font_size.trim()) {
+    applyFontSize(settings.font_size.trim());
+  }
+
   if (typeof settings.battery_interval_secs === 'number') {
     batteryPollIntervalSec = settings.battery_interval_secs;
     localStorage.setItem('battery-interval-secs', String(batteryPollIntervalSec));
@@ -765,7 +793,7 @@ async function loadDeviceProfiles() {
     const [active, profiles] = await invoke('get_device_profiles');
     deviceProfiles = profiles;
     activeProfile = profiles.find(p => p.friendly_name === active) || profiles[0];
-    currentDeviceName = activeProfile ? activeProfile.friendly_name : 'No Active Device';
+    currentDeviceName = activeProfile ? activeProfile.friendly_name : 'No Profile Found';
     
     // Update active device UI elements (both dashboard and settings)
     const activeNameEl = document.getElementById('active-earbud-name');
@@ -778,7 +806,11 @@ async function loadDeviceProfiles() {
     }
     const dashboardSub = document.getElementById('dashboard-sub');
     if (dashboardSub) {
-      dashboardSub.textContent = `Real-time connection monitoring for ${currentDeviceName}`;
+      if (activeProfile) {
+        dashboardSub.textContent = `Real-time connection monitoring for ${currentDeviceName}`;
+      } else {
+        dashboardSub.textContent = 'Create or select an earbud profile to start tracking.';
+      }
     }
     
     // Render dropdown list
@@ -817,6 +849,30 @@ function renderSwitcherDropdown() {
   const dropdownSettings = document.getElementById('switcher-dropdown-settings');
   if (dropdownSettings) {
     dropdownSettings.innerHTML = '';
+    if (deviceProfiles.length === 0) {
+      const item = document.createElement('div');
+      item.className = 'switcher-item disabled';
+      item.style.color = 'var(--muted)';
+      item.style.pointerEvents = 'none';
+      item.textContent = 'No Profile Found';
+      dropdownSettings.appendChild(item);
+      
+      const createBtn = document.createElement('div');
+      createBtn.className = 'switcher-item';
+      createBtn.style.color = 'var(--accent)';
+      createBtn.style.fontWeight = 'bold';
+      createBtn.textContent = '+ Create Profile';
+      createBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdownSettings.hidden = true;
+        const switcherEl = document.getElementById('earbud-switcher-settings');
+        if (switcherEl) switcherEl.classList.remove('active');
+        const setupBtn = document.getElementById('btn-open-device-setup');
+        if (setupBtn) setupBtn.click();
+      });
+      dropdownSettings.appendChild(createBtn);
+      return;
+    }
     deviceProfiles.forEach(p => {
       const item = document.createElement('div');
       item.className = 'switcher-item' + (p.friendly_name === currentDeviceName ? ' active' : '');
@@ -951,6 +1007,9 @@ if (switcherBadgeSettings) {
     
     if (dropdown) {
       dropdown.hidden = !dropdown.hidden;
+      if (!dropdown.hidden) {
+        renderSwitcherDropdown();
+      }
       if (container) container.classList.toggle('active', !dropdown.hidden);
     }
   });
@@ -1302,6 +1361,119 @@ function populateBrandDropdowns() {
 }
 populateBrandDropdowns();
 
+const lastQueryStatus = {};
+
+async function updateProfileStatusUI() {
+  const select = document.getElementById('profile-select-dropdown');
+  if (!select) return;
+  const name = select.value;
+  const statusEl = document.getElementById('edit-profile-proto-status');
+  const textEl = document.getElementById('edit-profile-proto-text');
+  if (!statusEl || !textEl) return;
+
+  if (!name) {
+    statusEl.style.display = 'none';
+    textEl.innerHTML = '';
+    return;
+  }
+
+  // Always fetch fresh profile data from backend so protocol_mode is current
+  let freshProfiles = deviceProfiles;
+  try {
+    const [active, profiles] = await invoke('get_device_profiles');
+    freshProfiles = profiles;
+    deviceProfiles = profiles;
+  } catch (e) {
+    console.warn('Could not refresh profiles for status UI', e);
+  }
+
+  const p = freshProfiles.find(x => x.friendly_name === name);
+  if (!p) return;
+
+  const brandKey = p.brand || 'generic_other';
+  const activeMode = p.protocol_mode;
+
+  // Set default hint based on brand
+  let hintText = '';
+  if (brandKey === 'generic_other') {
+    statusEl.style.display = 'flex';
+    hintText = 'Generic: will use Standard GATT BAS only (no SPP probe).';
+    if (activeMode) {
+      hintText += '\nCurrently using: Standard GATT BAS';
+    }
+  } else if (brandKey === 'apple_airpods') {
+    statusEl.style.display = 'flex';
+    hintText = 'Will sniff passive BLE advertisements (Company ID: 0x004C).';
+    if (activeMode) {
+      hintText += '\nCurrently using: BLE Sniffing';
+    }
+  } else {
+    const entry = PROTOCOL_DB.find(e => e.key === brandKey);
+    if (entry) {
+      statusEl.style.display = 'flex';
+      if (entry.status === 'Implemented ✓') {
+        hintText = `Will try Proprietary RFCOMM (${entry.brand}) first, fall back to GATT on failure.`;
+      } else {
+        hintText = `Protocol documented but not yet implemented — will probe SPP then fall back to GATT.`;
+      }
+      if (activeMode) {
+        let modeDisplay = 'Auto-Detect (Connecting...)';
+        if (activeMode === 'proprietary') {
+          modeDisplay = 'Proprietary RFCOMM';
+        } else if (activeMode === 'standard') {
+          modeDisplay = 'Standard GATT BAS';
+        } else if (activeMode === 'auto') {
+          const isProfileConnected = (name === currentDeviceName) && lastConnected;
+          if (!isProfileConnected) {
+            modeDisplay = 'Connect earbuds to detect protocol';
+          }
+        }
+        hintText += `\nCurrently using: ${modeDisplay}`;
+      }
+    } else {
+      statusEl.style.display = 'none';
+    }
+  }
+
+  // Now append success/failure status
+  const statusInfo = lastQueryStatus[name];
+  if (statusInfo) {
+    if (statusInfo.success) {
+      const diffMs = Date.now() - statusInfo.timestamp;
+      const diffSecs = Math.floor(diffMs / 1000);
+      let relativeTime = 'Just now';
+      if (diffSecs >= 1800) relativeTime = '30 min ago';
+      else if (diffSecs >= 600) relativeTime = '10 min ago';
+      else if (diffSecs >= 300) relativeTime = '5 min ago';
+      else if (diffSecs >= 120) relativeTime = '2 min ago';
+      else if (diffSecs >= 60) relativeTime = '1 min ago';
+      else if (diffSecs >= 30) relativeTime = '30 sec ago';
+      hintText += `\n<span style="color: var(--green); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px;">Updated: ${relativeTime}</span>`;
+      statusEl.style.borderColor = 'rgba(74,222,128,0.2)';
+      statusEl.style.background = 'rgba(74,222,128,0.06)';
+      const icon = statusEl.querySelector('svg');
+      if (icon) icon.setAttribute('stroke', 'var(--green)');
+    } else {
+      const errorMsg = statusInfo.error || 'Connection failed. Device may be offline or out of range.';
+      hintText += `\n<span style="color: var(--red); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px;">${errorMsg}</span>`;
+      statusEl.style.borderColor = 'rgba(248,113,113,0.3)';
+      statusEl.style.background = 'rgba(248,113,113,0.08)';
+      const icon = statusEl.querySelector('svg');
+      if (icon) icon.setAttribute('stroke', 'var(--red)');
+    }
+  } else {
+    statusEl.style.borderColor = 'rgba(129,140,248,0.18)';
+    statusEl.style.background = 'rgba(129,140,248,0.08)';
+    const icon = statusEl.querySelector('svg');
+    if (icon) icon.setAttribute('stroke', '#818cf8');
+  }
+
+  textEl.innerHTML = hintText.replace(/\n/g, '<br>');
+}
+
+// Periodic status refresh
+setInterval(updateProfileStatusUI, 15000);
+
 function updateBrandHint(brandKey, statusElId, textElId, activeMode = null) {
   const statusEl = document.getElementById(statusElId);
   const textEl = document.getElementById(textElId);
@@ -1364,12 +1536,7 @@ if (profileSelectDropdown) {
     if (p) {
       document.getElementById('edit-profile-friendly-name').value = p.friendly_name;
       document.getElementById('edit-profile-brand').value = p.brand || 'generic_other';
-      updateBrandHint(
-        p.brand || 'generic_other',
-        'edit-profile-proto-status',
-        'edit-profile-proto-text',
-        p.protocol_mode
-      );
+      updateProfileStatusUI();
     }
   });
 }
@@ -1377,10 +1544,7 @@ if (profileSelectDropdown) {
 const editBrandEl = document.getElementById('edit-profile-brand');
 if (editBrandEl) {
   editBrandEl.addEventListener('change', () => {
-    const selectedName = profileSelectDropdown.value;
-    const p = deviceProfiles.find(x => x.friendly_name === selectedName);
-    const activeMode = p && p.brand === editBrandEl.value ? p.protocol_mode : 'auto';
-    updateBrandHint(editBrandEl.value, 'edit-profile-proto-status', 'edit-profile-proto-text', activeMode);
+    updateProfileStatusUI();
   });
 }
 
@@ -1397,6 +1561,30 @@ function populateProfileSelectDropdown() {
   const select = document.getElementById('profile-select-dropdown');
   if (!select) return;
   select.innerHTML = '';
+  
+  const btnRetry = document.getElementById('btn-retry-profile-conn');
+  const btnDelete = document.getElementById('btn-delete-profile');
+  
+  if (deviceProfiles.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'No Profile Found';
+    select.appendChild(opt);
+    
+    const editFriendlyName = document.getElementById('edit-profile-friendly-name');
+    if (editFriendlyName) editFriendlyName.value = '';
+    const editBrand = document.getElementById('edit-profile-brand');
+    if (editBrand) editBrand.value = '';
+    updateProfileStatusUI();
+    
+    if (btnRetry) btnRetry.style.display = 'none';
+    if (btnDelete) btnDelete.style.display = 'none';
+    return;
+  }
+  
+  if (btnRetry) btnRetry.style.display = 'block';
+  if (btnDelete) btnDelete.style.display = 'block';
+  
   deviceProfiles.forEach(p => {
     const opt = document.createElement('option');
     opt.value = p.friendly_name;
@@ -1429,6 +1617,90 @@ function resetProfileForm() {
     brandInput.dispatchEvent(new Event('change'));
   }
   if (protoInput) protoInput.value = 'auto';
+}
+
+async function retryConnection(name) {
+  const btn = document.getElementById('btn-retry-profile-conn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Connecting...';
+  }
+  try {
+    const p = deviceProfiles.find(x => x.friendly_name === name);
+    if (!p) return;
+    
+    // Reset protocol mode back to 'auto' to trigger discovery
+    p.protocol_mode = 'auto';
+    await invoke('save_device_profile', { profile: p });
+    
+    // Reconfigure backend tracker for this device
+    const profile = await invoke('switch_active_profile', { name });
+    activeProfile = profile;
+    currentDeviceName = name;
+    
+    // Update UI elements
+    const nameEl = document.getElementById('active-earbud-name');
+    if (nameEl) nameEl.textContent = name;
+    
+    const nameSettingsEl = document.getElementById('active-earbud-name-settings');
+    if (nameSettingsEl) nameSettingsEl.textContent = name;
+    
+    const subEl = document.getElementById('dashboard-sub');
+    if (subEl) {
+      subEl.textContent = `Real-time connection monitoring for ${name}`;
+    }
+    
+    renderSwitcherDropdown();
+    updateBatteryCardLayout();
+    
+    // Clear last battery cache so it queries fresh
+    localStorage.removeItem('last-battery-info');
+    updateBatteryUI(null);
+    
+    showNotificationToast(`Retrying connection for ${name}...`);
+    
+    // Force poll battery immediately
+    const batteryInfo = await invoke('force_query_battery');
+    if (batteryInfo) {
+      updateBatteryUI(batteryInfo);
+      showNotificationToast(`Successfully connected to ${name}!`);
+      lastQueryStatus[name] = {
+        success: true,
+        timestamp: Date.now(),
+        error: null
+      };
+    } else {
+      showNotificationToast(`Connection to ${name} failed.`);
+      lastQueryStatus[name] = {
+        success: false,
+        timestamp: Date.now(),
+        error: p.brand === 'generic_other'
+          ? 'Standard GATT BAS query failed. The device may be disconnected, out of range, or does not support standard battery service.'
+          : 'SPP query and GATT fallback both failed. The device may be disconnected, out of range, or standard services are inaccessible.'
+      };
+    }
+    updateProfileStatusUI();
+    
+    await refreshSnapshot();
+    refreshActivePage();
+  } catch (err) {
+    console.error("Failed to retry connection", err);
+    showNotificationToast("Failed to retry connection.");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Retry Connection';
+    }
+  }
+}
+
+const btnRetryProfileConn = document.getElementById('btn-retry-profile-conn');
+if (btnRetryProfileConn) {
+  btnRetryProfileConn.addEventListener('click', async () => {
+    const select = document.getElementById('profile-select-dropdown');
+    if (!select || !select.value) return;
+    await retryConnection(select.value);
+  });
 }
 
 const btnDeleteProfile = document.getElementById('btn-delete-profile');
@@ -1545,8 +1817,31 @@ if (btnCreateProfile) {
         ? `Profile created as "${savedName}" (two devices with same name — both registered).`
         : `Profile "${savedName || friendlyName}" created successfully!`;
       populateProfileSelectDropdown();
+      await refreshPairedDevicesList();
       resetProfileForm();
       showNotificationToast(successMsg);
+
+      if (profileCreatedMsg) {
+        profileCreatedMsg.innerHTML = `Profile <strong>${escapeHtml(savedName || friendlyName)}</strong> has been registered. Go to the dashboard to view live battery levels and stats.`;
+      }
+      if (profileCreatedDialog) {
+        profileCreatedDialog.hidden = false;
+      }
+
+      if (savedName) {
+        await selectActiveProfile(savedName);
+        if (currentDeviceName === savedName) {
+          setActiveTab(switchTabEdit);
+          const select = document.getElementById('profile-select-dropdown');
+          if (select) {
+            select.value = savedName;
+            select.dispatchEvent(new Event('change'));
+          }
+          if (typeof retryConnection === 'function') {
+            retryConnection(savedName);
+          }
+        }
+      }
     } catch (err) {
       console.error(err);
       showNotificationToast("Error creating profile: " + err);
@@ -1629,6 +1924,20 @@ importDataFile?.addEventListener('change', () => {
   if (file) importAllDataFromFile(file);
 });
 
+profileCreatedClose?.addEventListener('click', () => {
+  if (profileCreatedDialog) profileCreatedDialog.hidden = true;
+});
+profileCreatedGotoDashboard?.addEventListener('click', () => {
+  if (profileCreatedDialog) profileCreatedDialog.hidden = true;
+  if (setupDialog) setupDialog.hidden = true;
+  navigateToPage('dashboard');
+});
+profileCreatedDialog?.addEventListener('click', (e) => {
+  if (e.target === profileCreatedDialog) {
+    profileCreatedDialog.hidden = true;
+  }
+});
+
 // Check build mode (debug vs release) to show/hide debug tag
 async function checkBuildMode() {
   try {
@@ -1636,6 +1945,10 @@ async function checkBuildMode() {
     const tag = document.getElementById('debug-tag');
     if (tag) {
       tag.style.display = debugMode ? 'inline-block' : 'none';
+    }
+    const dbCard = document.getElementById('protocol-db-card');
+    if (dbCard) {
+      dbCard.style.display = debugMode ? 'block' : 'none';
     }
     // Disable right-click context menu in production release
     if (!debugMode) {
@@ -1684,7 +1997,97 @@ document.querySelectorAll('.nav-item').forEach(item => {
   });
 });
 
-// Click handlers for cards on the dashboard to allow seamless navigation
+// ── Setup Info Page ────────────────────────────────────────────────────────────
+(function initSetupInfoPage() {
+  const STORAGE_KEY = 'setup-info-hidden';
+  const navEl = document.getElementById('nav-setup-info');
+  const toggle = document.getElementById('setup-info-hide-toggle');
+  const confirmDialog = document.getElementById('hide-setup-info-dialog');
+  const cancelBtn = document.getElementById('hide-setup-info-cancel');
+  const confirmBtn = document.getElementById('hide-setup-info-confirm');
+
+  // Read stored state (true = permanently hidden)
+  const isHidden = localStorage.getItem(STORAGE_KEY) === 'true';
+
+  function applyHiddenState(hidden) {
+    if (navEl) navEl.style.display = hidden ? 'none' : '';
+    // If currently on this page and we're hiding it, navigate away
+    if (hidden) {
+      const pageEl = document.getElementById('page-setup-info');
+      if (pageEl && pageEl.classList.contains('active')) {
+        navigateToPage('dashboard');
+      }
+    }
+  }
+
+  // Apply on load
+  applyHiddenState(isHidden);
+  if (toggle) {
+    toggle.checked = isHidden;
+    // If already hidden, disable the toggle visually (can't un-hide without reset)
+    if (isHidden) {
+      toggle.disabled = true;
+      const label = document.getElementById('setup-info-hide-toggle-label');
+      if (label) label.style.opacity = '0.45';
+    }
+  }
+
+  // Toggle change — intercept before it visually commits
+  if (toggle && !isHidden) {
+    toggle.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        // Revert immediately, let user confirm first
+        e.target.checked = false;
+        if (confirmDialog) confirmDialog.hidden = false;
+      }
+    });
+  }
+
+  // Confirmation dialog: Cancel
+  if (cancelBtn && confirmDialog) {
+    cancelBtn.addEventListener('click', () => {
+      confirmDialog.hidden = true;
+      if (toggle) toggle.checked = false;
+    });
+  }
+
+  // Confirmation dialog: Confirm hide
+  if (confirmBtn && confirmDialog) {
+    confirmBtn.addEventListener('click', () => {
+      confirmDialog.hidden = true;
+      localStorage.setItem(STORAGE_KEY, 'true');
+      if (toggle) {
+        toggle.checked = true;
+        toggle.disabled = true;
+        const label = document.getElementById('setup-info-hide-toggle-label');
+        if (label) label.style.opacity = '0.45';
+      }
+      applyHiddenState(true);
+    });
+  }
+
+  // Close confirmation dialog on backdrop click
+  if (confirmDialog) {
+    confirmDialog.addEventListener('click', (e) => {
+      if (e.target === confirmDialog) {
+        confirmDialog.hidden = true;
+        if (toggle) toggle.checked = false;
+      }
+    });
+  }
+
+  // Quick-action buttons inside the page
+  const gotoSettings = document.getElementById('setup-info-goto-settings');
+  if (gotoSettings) {
+    gotoSettings.addEventListener('click', () => navigateToPage('settings'));
+  }
+  const gotoDashboard = document.getElementById('setup-info-goto-dashboard');
+  if (gotoDashboard) {
+    gotoDashboard.addEventListener('click', () => navigateToPage('dashboard'));
+  }
+})();
+
+
 const connCard = document.getElementById('conn-time')?.closest('.time-card');
 if (connCard) {
   connCard.addEventListener('click', () => navigateToPage('history'));
@@ -2473,57 +2876,129 @@ function fmtRemainingText(secs) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-async function updateEstimatedTimeLeft(batteryInfo) {
+async function updateEstimatedTimeLeft(batteryInfo, sessPlay) {
   const estText = document.getElementById('live-est-time');
   if (!estText) return;
 
-  const currentVal = batteryInfo?.left;
+  const left = batteryInfo?.left;
+  const right = batteryInfo?.right;
+  let currentVal = null;
+  if (left != null && right != null) {
+    currentVal = (left + right) / 2;
+  } else if (left != null) {
+    currentVal = left;
+  } else if (right != null) {
+    currentVal = right;
+  }
+
   if (currentVal == null) {
-    estText.innerHTML = `<span style="color: var(--muted); font-size: 14px; font-weight: 400; font-family: 'Inter', sans-serif;">—</span>`;
+    estText.innerHTML = `<span style="font-size: 14px; font-weight: 400; color: var(--muted); font-style: italic; font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;">Connect earbuds to see estimated time left</span>`;
     return;
   }
 
   let estimateSecs = null;
-  let estimateNote = `based on ${currentVal}% battery`;
+  let estimateNote = `based on ${Math.round(currentVal)}% battery`;
 
   try {
     const sessions = await invoke('get_sessions');
-    const currentSession = Array.isArray(sessions) && sessions.length > 0 ? sessions[0] : null;
-    const connectedSecs = Number(currentSession?.connected_secs || 0);
-    const startVal = Number(currentSession?.bat_left_connect);
+    const hasSessions = Array.isArray(sessions) && sessions.length > 0;
+    const currentSession = hasSessions ? sessions[0] : null;
 
-    if (Number.isFinite(connectedSecs) && connectedSecs > 0 && Number.isFinite(startVal)) {
-      const drop = startVal - currentVal;
-      if (drop > 0) {
-        const drainRatePerSec = drop / connectedSecs;
-        if (drainRatePerSec > 0) {
-          estimateSecs = currentVal / drainRatePerSec;
-          estimateNote = `based on this session's drain rate`;
+    // 1. Current session's active playback drain rate
+    let sessionRate = null;
+    if (currentSession) {
+      const playbackSecs = Number(sessPlay || currentSession.playback_secs || 0);
+      const startLeft = currentSession.bat_left_connect;
+      const startRight = currentSession.bat_right_connect;
+      let startVal = null;
+      if (startLeft != null && startRight != null) {
+        startVal = (Number(startLeft) + Number(startRight)) / 2;
+      } else if (startLeft != null) {
+        startVal = Number(startLeft);
+      } else if (startRight != null) {
+        startVal = Number(startRight);
+      }
+      if (Number.isFinite(playbackSecs) && playbackSecs > 0 && startVal !== null && Number.isFinite(startVal)) {
+        const drop = startVal - currentVal;
+        if (drop > 0) {
+          const rate = drop / playbackSecs;
+          if (rate > 0) sessionRate = rate;
         }
       }
+    }
+
+    // 2. Historical average playback drain rate (across completed sessions)
+    let historicalRate = null;
+    if (hasSessions) {
+      let totalDrop = 0;
+      let totalSecs = 0;
+      for (const s of sessions) {
+        const startL = s.bat_left_connect;
+        const startR = s.bat_right_connect;
+        const endL = s.bat_left_disc;
+        const endR = s.bat_right_disc;
+        const secs = s.playback_secs;
+
+        let startAvg = null;
+        if (startL != null && startR != null) startAvg = (startL + startR) / 2;
+        else if (startL != null) startAvg = startL;
+        else if (startR != null) startAvg = startR;
+
+        let endAvg = null;
+        if (endL != null && endR != null) endAvg = (endL + endR) / 2;
+        else if (endL != null) endAvg = endL;
+        else if (endR != null) endAvg = endR;
+
+        if (startAvg !== null && endAvg !== null && secs != null && secs > 0) {
+          const drop = startAvg - endAvg;
+          if (drop > 0) { totalDrop += drop; totalSecs += secs; }
+        }
+      }
+      if (totalDrop > 0 && totalSecs > 0) {
+        const rate = totalDrop / totalSecs;
+        if (rate > 0) historicalRate = rate;
+      }
+    }
+
+    // 3. Blend: current session gets 2x weight (more recent = more relevant)
+    let blendedRate = null;
+    let estimateNote = `based on ${Math.round(currentVal)}% battery`;
+    if (sessionRate !== null && historicalRate !== null) {
+      blendedRate = (sessionRate * 2 + historicalRate) / 3;
+      estimateNote = `blended session & historical rate`;
+    } else if (sessionRate !== null) {
+      blendedRate = sessionRate;
+      estimateNote = `based on this session's playback rate`;
+    } else if (historicalRate !== null) {
+      blendedRate = historicalRate;
+      estimateNote = `based on historical playback rate`;
+    }
+
+    if (blendedRate !== null && blendedRate > 0) {
+      estimateSecs = currentVal / blendedRate;
     }
   } catch (e) {
     console.error('get_sessions failed for estimated time left', e);
   }
 
   if (estimateSecs == null) {
-    // Conservative fallback: roughly 6 hours at 100%.
-    estimateSecs = currentVal * 216;
+    estText.innerHTML = `<span style="font-size: 16px; font-weight: 400; color: var(--muted); font-family: 'Inter', sans-serif;">Calibrating...</span><div style="color: var(--muted); font-size: 11px; font-weight: 400; font-family: 'Inter', sans-serif; margin-top: 4px; font-style: italic;">waiting for active playback battery drop</div>`;
+  } else {
+    estText.innerHTML = `≈ ${fmtRemainingText(estimateSecs)}<div style="color: var(--muted); font-size: 13px; font-weight: 400; font-family: 'Inter', sans-serif; margin-top: 4px;">${estimateNote}</div>`;
   }
-
-  estText.innerHTML = `≈ ${fmtRemainingText(estimateSecs)}<div style="color: var(--muted); font-size: 13px; font-weight: 400; font-family: 'Inter', sans-serif; margin-top: 4px;">${estimateNote}</div>`;
 }
 
 // ── Live Dashboard Extras ───────────────────────────────────────────────────────
-async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay) {
+async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay, sessPlay) {
   const appsContainer = document.getElementById('live-apps-container');
   const factsText = document.getElementById('live-facts-text');
 
   if (!appsContainer || !factsText) return;
 
   if (!connected) {
-    appsContainer.innerHTML = '<div style="color: var(--muted); font-size: 13px; font-style: italic; text-align: center;">Nothing playing right now</div>';
-    factsText.innerHTML = '<span style="color: var(--muted); font-style: italic;">Connect your earbuds to see live session insights here.</span>';
+    appsContainer.innerHTML = '<div style="color: var(--muted); font-size: 14px; font-style: italic; font-family: \'Segoe UI Variable\', \'Segoe UI\', system-ui, sans-serif; text-align: center;">Nothing playing right now</div>';
+    factsText.innerHTML = '<span style="color: var(--muted); font-style: italic; text-align: center;">Connect your earbuds to see live battery levels</span>';
+    updateEstimatedTimeLeft(null, 0);
     return;
   }
 
@@ -2548,58 +3023,129 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
         appsContainer.appendChild(div);
       });
     } else {
-      appsContainer.innerHTML = '<div style="color: var(--muted); font-size: 13px; font-style: italic; text-align: center;">Nothing playing right now</div>';
+      appsContainer.innerHTML = '<div style="color: var(--muted); font-size: 14px; font-style: italic; font-family: \'Segoe UI Variable\', \'Segoe UI\', system-ui, sans-serif; text-align: center;">Nothing playing right now</div>';
     }
   } catch (e) {
     console.error('get_active_audio_apps failed', e);
   }
 
-  // 2. Session Quick Facts
+  // 2. Earbud Battery Status
   try {
     const sessions = await invoke('get_sessions');
-    if (sessions && sessions.length > 0) {
-      const currentSession = sessions[0];
-      const connTime = fmtDurText(currentSession.connected_secs);
-
-      let batteryDropText = '';
-      if (batteryInfo) {
-        const startBat = currentSession.bat_left_connect;
-        const currentBat = batteryInfo.left;
-        if (startBat != null && currentBat != null) {
-          const drop = startBat - currentBat;
-          if (drop > 0) {
-            batteryDropText = ` The battery has dropped by <strong>${drop}%</strong> since connection.`;
-          } else if (drop < 0) {
-            batteryDropText = ` The battery has charged by <strong>${Math.abs(drop)}%</strong> since connection.`;
-          } else {
-            batteryDropText = ` The battery level hasn't changed since connection.`;
+    const isUnified = activeProfile && (activeProfile.protocol_mode === 'standard' || activeProfile.brand === 'generic_other');
+    
+    let batteryHtml = '';
+    let dropText = '';
+    
+    if (batteryInfo) {
+      const leftVal = batteryInfo.left;
+      const rightVal = batteryInfo.right;
+      let caseVal = batteryInfo.case;
+      const cacheKey = 'last-known-case-battery-' + (currentDeviceName || 'default');
+      if (caseVal === null || caseVal === undefined) {
+        const cachedCase = localStorage.getItem(cacheKey);
+        if (cachedCase !== null) {
+          caseVal = parseInt(cachedCase, 10);
+        } else if (sessions && sessions.length > 0) {
+          for (const s of sessions) {
+            if (s.bat_case_connect !== null && s.bat_case_connect !== undefined) {
+              caseVal = s.bat_case_connect;
+              localStorage.setItem(cacheKey, String(caseVal));
+              break;
+            }
+            if (s.bat_case_disc !== null && s.bat_case_disc !== undefined) {
+              caseVal = s.bat_case_disc;
+              localStorage.setItem(cacheKey, String(caseVal));
+              break;
+            }
+          }
+        }
+      } else {
+        localStorage.setItem(cacheKey, String(caseVal));
+      }
+      
+      if (isUnified) {
+        batteryHtml = `
+          <div style="display: flex; justify-content: center; width: 100%; text-align: center;">
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <span style="font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 0.5px;">BATTERY</span>
+              <span style="font-size: 20px; font-weight: 700; color: var(--text); font-family: monospace;">${leftVal !== null ? `${leftVal}%` : '—'}</span>
+            </div>
+          </div>
+        `;
+        
+        if (sessions && sessions.length > 0) {
+          const currentSession = sessions[0];
+          const startLeft = currentSession.bat_left_connect;
+          if (startLeft != null && leftVal != null) {
+            const drop = startLeft - leftVal;
+            if (drop > 0) dropText = `-${drop}%`;
+          }
+        }
+      } else {
+        const hasCase = caseVal !== null && caseVal !== undefined;
+        batteryHtml = `
+          <div style="display: flex; justify-content: space-around; width: 100%; text-align: center;">
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <span style="font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 0.5px;">LEFT</span>
+              <span style="font-size: 20px; font-weight: 700; color: var(--text); font-family: monospace;">${leftVal !== null ? `${leftVal}%` : '—'}</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <span style="font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 0.5px;">RIGHT</span>
+              <span style="font-size: 20px; font-weight: 700; color: var(--text); font-family: monospace;">${rightVal !== null ? `${rightVal}%` : '—'}</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <span style="font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 0.5px;">CASE</span>
+              <span style="font-size: 20px; font-weight: 700; color: var(--text); font-family: monospace;">${caseVal !== null ? `${caseVal}%` : '—'}</span>
+            </div>
+          </div>
+        `;
+        
+        if (sessions && sessions.length > 0) {
+          const currentSession = sessions[0];
+          const startLeft = currentSession.bat_left_connect;
+          const startRight = currentSession.bat_right_connect;
+          const startCase = currentSession.bat_case_connect;
+          let leftDrop = 0;
+          let rightDrop = 0;
+          let caseDrop = 0;
+          if (startLeft != null && leftVal != null) {
+            leftDrop = Math.max(0, startLeft - leftVal);
+          }
+          if (startRight != null && rightVal != null) {
+            rightDrop = Math.max(0, startRight - rightVal);
+          }
+          if (startCase != null && caseVal != null) {
+            caseDrop = Math.max(0, startCase - caseVal);
+          }
+          const drops = [];
+          if (leftDrop > 0) drops.push(`L: -${leftDrop}%`);
+          if (rightDrop > 0) drops.push(`R: -${rightDrop}%`);
+          if (caseDrop > 0) drops.push(`C: -${caseDrop}%`);
+          if (drops.length > 0) {
+            dropText = drops.join(' | ');
           }
         }
       }
-
-      factsText.innerHTML = `You've been connected for <strong>${connTime}</strong> in this session.${batteryDropText}`;
-    }
-  } catch (e) {
-    console.error('get_sessions failed in extras', e);
-  }
-
-  await updateEstimatedTimeLeft(batteryInfo);
-
-  // 3. Estimated Time Left
-  const estText = document.getElementById('live-est-time');
-  if (estText) {
-    if (batteryInfo && batteryInfo.left != null) {
-      // Assume 6 hours (360 minutes) for 100% battery
-      const totalMins = Math.round(batteryInfo.left * 3.6);
-      const h = Math.floor(totalMins / 60);
-      const m = totalMins % 60;
-      estText.innerHTML = `≈ ${h}h ${m}m<div style="color: var(--muted); font-size: 13px; font-weight: 400; font-family: 'Inter', sans-serif; margin-top: 4px;">based on ${batteryInfo.left}%</div>`;
     } else {
-      estText.innerHTML = `<span style="color: var(--muted); font-size: 14px; font-weight: 400; font-family: 'Inter', sans-serif;">—</span>`;
+      batteryHtml = `
+        <div style="color: var(--muted); font-style: italic; text-align: center; font-size: 13px;">
+          No battery telemetry available
+        </div>
+      `;
     }
+    
+    let dropHtml = '';
+    if (dropText) {
+      dropHtml = `<div style="margin-top: 8px; font-size: 11px; color: var(--muted); text-align: center;">Session drop: <strong style="color: var(--text);">${dropText}</strong></div>`;
+    }
+    
+    factsText.innerHTML = `<div style="display: flex; flex-direction: column; align-items: center; width: 100%;">${batteryHtml}${dropHtml}</div>`;
+  } catch (e) {
+    console.error('Failed to render live battery details', e);
   }
 
-  await updateEstimatedTimeLeft(batteryInfo);
+  await updateEstimatedTimeLeft(batteryInfo, sessPlay);
 
   // 4. Daily Goal Progress
   const goalTargetSecs = currentGoal * 3600;
@@ -2612,7 +3158,11 @@ async function updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay)
 
   if (goalValEl && goalTargetEl && goalBarEl) {
     goalValEl.textContent = fmtDurText(totalTodayPlay);
-    goalTargetEl.textContent = `${currentGoal}h`;
+    if (currentGoal < 1.0) {
+      goalTargetEl.textContent = `${Math.round(currentGoal * 60)} min`;
+    } else {
+      goalTargetEl.textContent = `${currentGoal}h`;
+    }
     goalBarEl.style.width = `${progressPct}%`;
     if (progressPct >= 100) {
       goalBarEl.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)'; // Gold if met
@@ -2747,7 +3297,7 @@ async function refreshSnapshot() {
   }
 
   // Update Live Dashboard Extras
-  updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay);
+  updateLiveDashboardExtras(connected, batteryInfo, totalTodayPlay, sess_play);
 
   // Stats page
   document.getElementById('s-today-conn').textContent = fmtH(today.connected);
@@ -2987,6 +3537,14 @@ function updateBatteryUI(batteryInfo) {
     lastBatteryUpdateAt = batteryInfo.updated_at || Date.now();
     localStorage.setItem('last-battery-update-at', String(lastBatteryUpdateAt));
     localStorage.setItem('last-battery-info', JSON.stringify(batteryInfo));
+    if (currentDeviceName && currentDeviceName !== 'No Profile Found') {
+      lastQueryStatus[currentDeviceName] = {
+        success: true,
+        timestamp: lastBatteryUpdateAt,
+        error: null
+      };
+      updateProfileStatusUI();
+    }
   } else {
     const cached = localStorage.getItem('last-battery-info');
     if (cached) {
@@ -3001,7 +3559,7 @@ function updateBatteryUI(batteryInfo) {
   // Update dynamic device title in Nothing-style uppercase
   const titleEl = document.getElementById('battery-title-device');
   if (titleEl) {
-    let name = currentDeviceName.toUpperCase();
+    let name = (currentDeviceName || 'No Profile Found').toUpperCase();
     if (name.startsWith("CMF ")) {
       name = name.slice(4);
     }
@@ -3064,7 +3622,16 @@ function updateBatteryUI(batteryInfo) {
   const leftChar = batteryInfo ? batteryInfo.left_charging : false;
   const rightVal = batteryInfo ? batteryInfo.right : null;
   const rightChar = batteryInfo ? batteryInfo.right_charging : false;
-  const caseVal = batteryInfo ? batteryInfo.case : null;
+  let caseVal = batteryInfo ? batteryInfo.case : null;
+  const cacheKey = 'last-known-case-battery-' + (currentDeviceName || 'default');
+  if (caseVal === null || caseVal === undefined) {
+    const cachedCase = localStorage.getItem(cacheKey);
+    if (cachedCase !== null) {
+      caseVal = parseInt(cachedCase, 10);
+    }
+  } else {
+    localStorage.setItem(cacheKey, String(caseVal));
+  }
   const caseChar = batteryInfo ? batteryInfo.case_charging : false;
 
   if (isUnified) {
@@ -3123,7 +3690,7 @@ async function loadHistory() {
   rows.forEach(r => {
     const tr = document.createElement('tr');
     const start = prettyTimestamp(r.session_start);
-    const end = r.session_end ? prettyTimestamp(r.session_end) : '—';
+    const end = r.session_end ? prettyTimestamp(r.session_end) : '<span style="color: var(--accent); font-weight: 600; font-style: italic;">Active Session</span>';
     const interrupted = r.interrupted === 1 || r.interrupted === true;
     const redStyle = interrupted ? 'color:#f87171;' : '';
     tr.innerHTML = `
@@ -3168,11 +3735,11 @@ document.getElementById('reset-btn').addEventListener('click', () => {
         <line x1="12" y1="9" x2="12" y2="13" />
         <line x1="12" y1="17" x2="12.01" y2="17" />
       </svg>
-      Reset All Data?
+      Reset All Data and Delete Profiles?
     `;
   }
   if (msgEl) {
-    msgEl.textContent = 'This will permanently delete all session history and statistics. You will need to verify your Windows password to proceed.';
+    msgEl.textContent = 'This will permanently delete all session history and statistics, and delete all device profiles. You will need to verify your Windows password to proceed.';
   }
   dialog.hidden = false;
 });
@@ -3229,13 +3796,26 @@ document.getElementById('auth-confirm').addEventListener('click', async () => {
     if (pendingAuthAction === 'reset-all') {
       try {
         await invoke('reset_all');
+        await loadDeviceProfiles();
+        populateProfileSelectDropdown();
         localStorage.removeItem('daily-playback-cache-date');
         localStorage.removeItem('daily-playback-cache-secs');
+        localStorage.removeItem('last-battery-info');
+        localStorage.removeItem('last-battery-update-at');
+        // Re-show setup info page (it was globally hidden, restore it on full reset)
+        localStorage.removeItem('setup-info-hidden');
+        const navSetupInfo = document.getElementById('nav-setup-info');
+        if (navSetupInfo) navSetupInfo.style.display = '';
+        const setupToggle = document.getElementById('setup-info-hide-toggle');
+        if (setupToggle) { setupToggle.checked = false; setupToggle.disabled = false; }
+        const setupToggleLabel = document.getElementById('setup-info-hide-toggle-label');
+        if (setupToggleLabel) setupToggleLabel.style.opacity = '';
+        updateBatteryUI(null);
         statsHistoryBoundsPromise = null;
         statsWeekOffset = 0;
         statsMaxWeekOffset = null;
         if (resetSuccessMsg) {
-          resetSuccessMsg.textContent = 'All session history and statistics have been reset.';
+          resetSuccessMsg.textContent = 'All session history and statistics have been reset, and all device profiles have been deleted.';
         }
         if (resetSuccessDialog) resetSuccessDialog.hidden = false;
         try {
@@ -3279,7 +3859,10 @@ authPwdInput && authPwdInput.addEventListener('keydown', (e) => {
 });
 
 // ── Tauri event: backend pushed state-changed ─────────────────────────────────
-event.listen('state-changed', () => refreshSnapshot());
+event.listen('state-changed', async () => {
+  await loadDeviceProfiles();
+  refreshSnapshot();
+});
 
 // ── Polling timer (1 s) as safety net ────────────────────────────────────────
 setInterval(refreshSnapshot, 1000);
@@ -3574,7 +4157,7 @@ function bdRenderDetail(bd, container) {
         </div>
         <div class="bd-info-item">
           <span class="bd-info-label">End</span>
-          <span class="bd-info-value" style="font-size:12px;">${s.session_end ? bdFmtDate(s.session_end) : '—'}</span>
+          <span class="bd-info-value" style="font-size:12px;">${s.session_end ? bdFmtDate(s.session_end) : '<span style="color: var(--accent); font-weight: 600; font-style: italic;">Active Session</span>'}</span>
         </div>
         <div class="bd-info-item">
           <span class="bd-info-label">Connected</span>
@@ -3917,6 +4500,13 @@ async function loadBatteryGraph() {
       liveLeft = batteryInfo.left;
       liveRight = batteryInfo.right;
       liveCase = batteryInfo.case;
+      if (liveCase === null || liveCase === undefined) {
+        const cacheKey = 'last-known-case-battery-' + (currentDeviceName || 'default');
+        const cachedCase = localStorage.getItem(cacheKey);
+        if (cachedCase !== null) {
+          liveCase = parseInt(cachedCase, 10);
+        }
+      }
       // Use the global connection state tracker (wasConnected is set by the poll loop)
       // Fallback: check status text but use exact match, not includes(), to avoid
       // matching "Disconnected (Last Known)" which also contains "Connected"

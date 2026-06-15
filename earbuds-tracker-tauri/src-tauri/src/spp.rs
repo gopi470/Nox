@@ -718,6 +718,7 @@ pub fn read_battery(
     mac_address: Option<&str>,
     brand: &str,
     protocol_mode: &str,
+    is_connected: bool,
 ) -> (Option<BatteryInfo>, &'static str) {
     // AirPods has its own dedicated handler (passive BLE advertisement sniffing)
     if brand == "apple_airpods" {
@@ -726,18 +727,33 @@ pub fn read_battery(
 
     // Generic / Other — PnP only, never attempt SPP
     if brand == "generic_other" {
+        if !is_connected {
+            return (None, "standard");
+        }
         return (read_battery_pnp(device_name), "standard");
     }
 
     // Already discovered in a previous session — skip rediscovery
     if protocol_mode == "proprietary" {
+        if !is_connected {
+            return (None, "proprietary");
+        }
         return (read_battery_spp(device_name, mac_address, brand), "proprietary");
     }
     if protocol_mode == "standard" {
+        if !is_connected {
+            return (None, "standard");
+        }
         return (read_battery_pnp(device_name), "standard");
     }
 
-    // protocol_mode == "auto": first-time discovery — try SPP for any DB brand.
+    // protocol_mode == "auto": first-time discovery.
+    // MUST ONLY perform discovery if the device is currently connected!
+    if !is_connected {
+        return (None, "auto");
+    }
+
+    // Try SPP first
     if let Some(info) = read_battery_spp(device_name, mac_address, brand) {
         return (Some(info), "proprietary");
     }
@@ -750,6 +766,7 @@ pub fn read_battery(
     _mac_address: Option<&str>,
     _brand: &str,
     _protocol_mode: &str,
+    _is_connected: bool,
 ) -> (Option<BatteryInfo>, &'static str) {
     (None, "standard")
 }

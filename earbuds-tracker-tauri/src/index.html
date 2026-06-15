@@ -91,6 +91,17 @@
           </span>
           <span class="nav-label">Settings</span>
         </li>
+        <li class="nav-item" id="nav-setup-info" data-page="setup-info">
+          <span class="nav-icon">
+            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+          </span>
+          <span class="nav-label">Setup Info</span>
+        </li>
       </ul>
     </nav>
 
@@ -102,14 +113,14 @@
         <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
           <div style="display: flex; flex-direction: column; min-width: 0;">
             <h1 class="page-title">Dashboard</h1>
-            <p class="page-sub" id="dashboard-sub" style="margin: 0;">Real-time connection monitoring for CMF Buds 2a</p>
+            <p class="page-sub" id="dashboard-sub" style="margin: 0;">Real-time connection monitoring</p>
           </div>
           <div style="display: flex; gap: 8px; align-items: center; margin-left: auto;">
             <!-- Active Earbud Profile Indicator (Read-only) -->
             <div class="earbud-switcher-container" id="earbud-switcher">
               <div class="switcher-badge" id="active-earbud-badge" style="cursor: default; pointer-events: none; background: rgba(255, 255, 255, 0.05); border-color: var(--border); box-shadow: none;">
                 <span class="switcher-icon">🎧</span>
-                <span id="active-earbud-name">CMF Buds 2a</span>
+                <span id="active-earbud-name">—</span>
               </div>
             </div>
             
@@ -136,20 +147,35 @@
 
           <!-- Status cards -->
           <div class="detail-col">
-            <div class="card status-card">
+            <div class="card status-card" style="position: relative; overflow: hidden;">
               <span class="status-dot disconnected" id="status-dot"></span>
               <div>
                 <div class="status-title" id="status-title">Disconnected</div>
                 <div class="status-desc" id="status-desc">Earbuds are not detected</div>
               </div>
+              <!-- Watermark -->
+              <svg style="position:absolute;right:12px;bottom:10px;width:40px;height:40px;opacity:0.06;pointer-events:none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 7l10 10-5 5V2l5 5L7 17"/>
+              </svg>
             </div>
-            <div class="card time-card">
+            <div class="card time-card" style="position: relative; overflow: hidden;">
               <div class="time-label">CONNECTION TIME</div>
               <div class="time-value mono" id="conn-time">00:00:00</div>
+              <!-- Watermark -->
+              <svg style="position:absolute;right:12px;bottom:10px;width:40px;height:40px;opacity:0.06;pointer-events:none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
             </div>
-            <div class="card time-card">
+            <div class="card time-card" style="position: relative; overflow: hidden;">
               <div class="time-label green">PLAYBACK TIME</div>
               <div class="time-value mono green" id="play-time">00:00:00</div>
+              <!-- Watermark -->
+              <svg style="position:absolute;right:12px;bottom:10px;width:40px;height:40px;opacity:0.06;pointer-events:none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18V5l12-2v13"/>
+                <circle cx="6" cy="18" r="3"/>
+                <circle cx="18" cy="16" r="3"/>
+              </svg>
             </div>
           </div>
         </div>
@@ -177,16 +203,14 @@
             <div class="status-title" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round" style="color: var(--green);">
-                <circle cx="12" cy="12" r="10"></circle>
-                <path d="M12 16v-4"></path>
-                <path d="M12 8h.01"></path>
+                <rect x="2" y="7" width="16" height="10" rx="2" ry="2"></rect>
+                <line x1="22" y1="11" x2="22" y2="13"></line>
               </svg>
-              Session Quick Facts
+              Earbud Battery
             </div>
             <div style="display: flex; flex-direction: column; flex: 1; justify-content: center; min-height: 60px;">
               <div style="color: var(--text); font-size: 14px; line-height: 1.6;" id="live-facts-text">
-                <span style="color: var(--muted); font-style: italic;">Connect your earbuds to see live session insights
-                  here.</span>
+                <span style="color: var(--muted); font-style: italic;">Connect your earbuds to see live battery levels</span>
               </div>
             </div>
           </div>
@@ -578,7 +602,7 @@
             <div class="earbud-switcher-container" id="earbud-switcher-settings">
               <div class="switcher-badge" id="active-earbud-badge-settings">
                 <span class="switcher-icon">🎧</span>
-                <span id="active-earbud-name-settings">CMF Buds 2a</span>
+                <span id="active-earbud-name-settings">—</span>
                 <span class="switcher-arrow">▾</span>
               </div>
               <div class="switcher-dropdown" id="switcher-dropdown-settings" hidden></div>
@@ -621,6 +645,20 @@
             <select id="font-style-select" class="input-field" style="width: 180px;">
               <option value="default">Default</option>
               <option value="ndot">NDot</option>
+            </select>
+          </div>
+        </div>
+        <div class="card settings-card">
+          <div class="settings-control-row">
+            <div>
+              <div class="set-title">Font Size</div>
+              <div class="set-desc">Adjust the layout text scaling of the interface.</div>
+            </div>
+            <select id="font-size-select" class="input-field" style="width: 180px;">
+              <option value="small">Small</option>
+              <option value="default">Default</option>
+              <option value="medium">Medium</option>
+              <option value="large">Large</option>
             </select>
           </div>
         </div>
@@ -683,7 +721,7 @@
           <div class="settings-control-row">
             <div>
               <div class="set-title">Battery Drain Interval</div>
-              <div class="set-desc">Matches the step size of earbud battery reporting (e.g. 5% jumps for CMF Buds 2a).
+              <div class="set-desc">Matches the step size of earbud battery reporting (e.g. 5% jumps).
               </div>
             </div>
             <select id="battery-step-select" class="input-field" style="width: 180px;">
@@ -697,7 +735,7 @@
           <div class="settings-control-row" style="flex-direction: column; align-items: stretch; gap: 16px;">
             <div>
               <div class="set-title">Graph Pagination</div>
-              <div class="set-desc">Set how many values the X-axis can hold before moving to a new page.</div>
+              <div class="set-desc">Set how many values the X-axis can hold before moving to a new page for the graphs on the Battery  page.</div>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px;">
               <div>
@@ -786,9 +824,8 @@
         <div class="card settings-card">
           <div class="settings-control-row">
             <div>
-              <div class="set-title">Reset All Data</div>
-              <div class="set-desc">Permanently wipe all session history and statistics. Requires Windows password
-                confirmation. This cannot be undone.</div>
+              <div class="set-title">Reset All Data and Delete Profiles</div>
+              <div class="set-desc">Permanently wipe all session history and statistics, and delete all device profiles. Requires Windows password confirmation. This cannot be undone.</div>
             </div>
             <button class="btn btn-danger btn-icon-label" id="reset-btn"
               style="flex-shrink:0; white-space:nowrap; padding: 7px 14px;">
@@ -803,7 +840,7 @@
             </button>
           </div>
         </div>
-        <div class="card settings-card">
+        <div class="card settings-card" id="protocol-db-card">
           <div class="settings-control-row">
             <div>
               <div class="set-title">Protocol Database</div>
@@ -830,6 +867,126 @@
               Local data stored in <code>%APPDATA%\EarbudsTracker\tracker.db</code>.
             </div>
           </div>
+        </div>
+      </section>
+
+      <!-- ── Setup Info Page ──────────────────────────────────────────── -->
+      <section class="page" id="page-setup-info">
+        <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
+          <div style="display: flex; flex-direction: column; min-width: 0;">
+            <h1 class="page-title">Setup Info</h1>
+            <p class="page-sub">Getting started — configure your first earbud profile</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; margin-left: auto; align-self: flex-start; margin-top: 8px;">
+            <span style="font-size: 12px; color: var(--muted); user-select: none;">Hide this Page</span>
+            <label class="toggle-switch" id="setup-info-hide-toggle-label">
+              <input type="checkbox" id="setup-info-hide-toggle" />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Welcome banner -->
+        <div class="card" style="margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <div style="width: 40px; height: 40px; background: var(--bg3); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid var(--border);">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--muted);">
+                <path d="M3 18v-6a9 9 0 0 1 18 0v6"/>
+                <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
+              </svg>
+            </div>
+            <div>
+              <div style="font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px;">Welcome to Nox</div>
+              <div style="font-size: 12px; color: var(--muted); line-height: 1.6;">Follow the steps below to set up your first earbud profile and start tracking battery and usage stats in real time.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 1 -->
+        <div class="card setup-step-card" style="margin-bottom: 12px;">
+          <div class="setup-step-header">
+            <div class="setup-step-number">1</div>
+            <div>
+              <div class="setup-step-title">Pair your earbuds via Windows Bluetooth</div>
+              <div class="setup-step-desc">Open <strong>Windows Settings → Bluetooth &amp; devices</strong> and pair your earbuds. Nox works with any Bluetooth audio device that is already paired to Windows.</div>
+            </div>
+          </div>
+          <div class="setup-step-tip">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--muted);"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Make sure earbuds are powered on and within range before pairing.
+          </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="card setup-step-card" style="margin-bottom: 12px;">
+          <div class="setup-step-header">
+            <div class="setup-step-number">2</div>
+            <div>
+              <div class="setup-step-title">Create an Earbud Profile in Nox</div>
+              <div class="setup-step-desc">Go to <strong>Settings → Manage Profiles</strong> and click the <em>Add</em> tab. Select your paired device from the dropdown, choose your brand / manufacturer, then click <strong>Add Profile</strong>. If your paired earbuds are not present in the Add section dropdown, go to the <em>Paired</em> tab to locate them and click <strong>Add Profile</strong> to continue.</div>
+            </div>
+          </div>
+          <div class="setup-step-tip">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--muted);"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            You can register multiple profiles if you own more than one pair of earbuds.
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="card setup-step-card" style="margin-bottom: 12px;">
+          <div class="setup-step-header">
+            <div class="setup-step-number">3</div>
+            <div>
+              <div class="setup-step-title">Set your brand &amp; polling preferences</div>
+              <div class="setup-step-desc">On the <strong>Settings</strong> page, configure <em>Battery Polling Interval</em> (how often Nox queries battery), <em>Battery Drain Interval</em> (reporting step size of your earbuds — typically 5%), and your <em>Daily Playback Goal</em>.</div>
+            </div>
+          </div>
+          <div class="setup-step-tip">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--muted);"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            For CMF / Nothing earbuds, <strong>5%</strong> drain interval and <strong>60 seconds</strong> polling is recommended.
+          </div>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="card setup-step-card" style="margin-bottom: 12px;">
+          <div class="setup-step-header">
+            <div class="setup-step-number">4</div>
+            <div>
+              <div class="setup-step-title">Connect &amp; go to Dashboard</div>
+              <div class="setup-step-desc">Put on your earbuds and let Windows connect them. Switch to the <strong>Dashboard</strong> page — you should see the connection status turn green and battery levels appear within one polling cycle.</div>
+            </div>
+          </div>
+          <div class="setup-step-tip">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--muted);"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Click <em>Query Now</em> on the Battery page for an instant refresh if levels don't appear right away.
+          </div>
+        </div>
+
+        <!-- Step 5 -->
+        <div class="card setup-step-card" style="margin-bottom: 16px;">
+          <div class="setup-step-header">
+            <div class="setup-step-number">5</div>
+            <div>
+              <div class="setup-step-title">Enable startup &amp; notifications (optional)</div>
+              <div class="setup-step-desc">In <strong>Settings</strong>, toggle <em>Enable on Startup</em> so Nox launches with Windows, and turn on <em>Desktop Notifications</em> to receive alerts when your earbuds connect or disconnect.</div>
+            </div>
+          </div>
+          <div class="setup-step-tip">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--muted);"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Nox minimises to the system tray — close the window to keep it running in the background.
+          </div>
+        </div>
+
+        <!-- Quick actions -->
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px;">
+          <button class="btn btn-icon-label" id="setup-info-goto-settings" style="padding: 8px 16px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Go to Settings
+          </button>
+          <button class="btn btn-icon-label" id="setup-info-goto-dashboard" style="padding: 8px 16px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+            Go to Dashboard
+          </button>
         </div>
       </section>
 
@@ -1046,6 +1203,24 @@
     </div>
   </div>
 
+  <!-- Profile Created Success Dialog -->
+  <div class="dialog-overlay" id="profile-created-dialog" hidden>
+    <div class="dialog-box" style="max-width: 400px; width: 95%;">
+      <div class="dialog-title" style="display:flex;align-items:center;gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6L9 17l-5-5" />
+        </svg>
+        Profile Registered
+      </div>
+      <div class="dialog-msg" id="profile-created-msg" style="margin-bottom: 0;"></div>
+      <div class="dialog-btns" style="margin-top: 16px;">
+        <button class="btn" id="profile-created-close">Dismiss</button>
+        <button class="btn btn-primary" id="profile-created-goto-dashboard">Go to Dashboard</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Device Setup / Manage Profiles Dialog -->
   <div class="dialog-overlay" id="device-setup-dialog" hidden>
     <div class="dialog-box" style="max-width: 440px; width: 95%; position: relative; padding-top: 36px;">
@@ -1074,7 +1249,7 @@
           
           <div style="margin-bottom: 12px; opacity: 0.85;">
             <label style="display: block; font-size: 11px; margin-bottom: 4px; font-weight: 600;">Bluetooth Device Name</label>
-            <input type="text" id="edit-profile-friendly-name" class="input-field" style="width: 100%; background: rgba(255,255,255,0.04); cursor: not-allowed;" readonly disabled>
+            <input type="text" id="edit-profile-friendly-name" class="input-field" style="width: 100%; background: rgba(255,255,255,0.04); cursor: not-allowed;" placeholder="No Profile Found" readonly disabled>
           </div>
           
           <div style="margin-bottom: 12px;">
@@ -1089,7 +1264,8 @@
           </div>
 
           <div style="display: flex; gap: 8px; margin-top: 16px;">
-            <button class="btn btn-danger" id="btn-delete-profile" style="width: 100%; font-size: 11px; padding: 7px 12px;">Delete Profile</button>
+            <button class="btn" id="btn-retry-profile-conn" style="flex: 1; font-size: 11px; padding: 7px 12px; border-color: var(--border);">Retry Connection</button>
+            <button class="btn btn-danger" id="btn-delete-profile" style="flex: 1; font-size: 11px; padding: 7px 12px;">Delete Profile</button>
           </div>
         </div>
 
@@ -1134,6 +1310,26 @@
           </div>
         </div>
 
+      </div>
+    </div>
+  </div>
+
+  <!-- Hide Setup Info Confirmation Dialog -->
+  <div class="dialog-overlay" id="hide-setup-info-dialog" hidden>
+    <div class="dialog-box">
+      <div class="dialog-title" style="display:flex;align-items:center;gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          <line x1="12" y1="9" x2="12" y2="13" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+        Hide Setup Info?
+      </div>
+      <div class="dialog-msg">This page will be <strong>permanently hidden</strong> and cannot be re-enabled without a full data reset. You can always find this information in the Nox documentation.</div>
+      <div class="dialog-btns">
+        <button class="btn" id="hide-setup-info-cancel">Cancel</button>
+        <button class="btn btn-danger" id="hide-setup-info-confirm">Hide Permanently</button>
       </div>
     </div>
   </div>

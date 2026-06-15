@@ -80,21 +80,14 @@ pub struct AppSettings {
 
 fn default_battery_interval() -> u64 { 300 }
 fn default_battery_step() -> u8 { 5 }
-fn default_target_device() -> String { "CMF Buds 2a".to_string() }
+fn default_target_device() -> String { "".to_string() }
 fn default_desktop_notifications() -> bool { true }
 fn default_auto_backup_interval() -> String { "never".to_string() }
 fn default_autopause_enabled() -> bool { true }
 fn default_device_profiles() -> Vec<DeviceProfile> {
-    vec![DeviceProfile {
-        friendly_name: "CMF Buds 2a".to_string(),
-        brand: "Nothing".to_string(),
-        protocol_mode: "auto".to_string(),
-        battery_interval: 300,
-        battery_step: 5,
-        mac_address: None,
-    }]
+    vec![]
 }
-fn default_active_device() -> String { "CMF Buds 2a".to_string() }
+fn default_active_device() -> String { "".to_string() }
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -102,7 +95,7 @@ impl Default for AppSettings {
             battery_interval: default_battery_interval(),
             battery_step: default_battery_step(),
             target_device: default_target_device(),
-            startup_enabled: false,
+            startup_enabled: true,
             desktop_notifications: default_desktop_notifications(),
             auto_backup_enabled: false,
             auto_backup_interval: default_auto_backup_interval(),
@@ -173,23 +166,6 @@ pub(crate) fn load_settings() -> AppSettings {
         Err(_) => AppSettings::default(),
     };
 
-    if settings.device_profiles.is_empty() {
-        let name = settings.target_device.clone();
-        let brand = if name.to_uppercase().contains("CMF") || name.to_uppercase().contains("NOTHING") {
-            "nothing_cmf".to_string()
-        } else {
-            "generic_other".to_string()
-        };
-        settings.device_profiles = vec![DeviceProfile {
-            friendly_name: name.clone(),
-            brand,
-            protocol_mode: "auto".to_string(),
-            battery_interval: settings.battery_interval,
-            battery_step: settings.battery_step,
-            mac_address: None,
-        }];
-        settings.active_device = name;
-    }
     settings
 }
 
@@ -321,7 +297,21 @@ fn set_battery_step(step: u8, state: State<TrackerState>) {
 
 #[tauri::command]
 fn reset_all(state: State<TrackerState>) {
+    // 1. Reset database tables
     state.reset_all();
+
+    // 2. Save reset settings where device_profiles is empty, active_device and target_device are empty
+    let mut settings = AppSettings::default();
+    settings.device_profiles = vec![];
+    settings.active_device = String::new();
+    settings.target_device = String::new();
+    save_settings_to_disk(&settings);
+
+    // 3. Reset the running tracker configuration to empty
+    state.set_device_name("No Profile Found");
+    state.set_mac_address(None);
+    state.set_brand("");
+    state.set_protocol_mode("auto");
 }
 
 #[tauri::command]
@@ -859,7 +849,7 @@ fn is_bluetooth_enabled() -> bool {
 
 #[tauri::command]
 fn get_app_version() -> String {
-    "1.0.0".to_string()
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 #[tauri::command]
@@ -992,10 +982,6 @@ pub fn run() {
     // Load unified settings. If `settings.json` is missing (older installs), fall back
     // to the legacy per-setting text files and persist a fresh `settings.json` so
     // subsequent launches use the unified storage.
-    let mut initial_device = "CMF Buds 2a".to_string();
-    let mut initial_interval = 300; // 5 minutes default
-    let mut initial_step = 5; // 5% default
-
     let mut settings = load_settings();
     let mut migrated_from_legacy = false;
 
@@ -1031,15 +1017,22 @@ pub fn run() {
         }
     }
 
-    if !settings.active_device.trim().is_empty() {
-        initial_device = settings.active_device.clone();
+    let initial_device = if settings.device_profiles.is_empty() {
+        "No Profile Found".to_string()
+    } else if !settings.active_device.trim().is_empty() {
+        settings.active_device.clone()
     } else if !settings.target_device.trim().is_empty() {
-        initial_device = settings.target_device.clone();
-    }
-    initial_interval = settings.battery_interval;
-    if settings.battery_step == 1 || settings.battery_step == 5 || settings.battery_step == 10 {
-        initial_step = settings.battery_step;
-    }
+        settings.target_device.clone()
+    } else {
+        settings.device_profiles[0].friendly_name.clone()
+    };
+
+    let initial_interval = settings.battery_interval;
+    let initial_step = if settings.battery_step == 1 || settings.battery_step == 5 || settings.battery_step == 10 {
+        settings.battery_step
+    } else {
+        5
+    };
 
     if migrated_from_legacy {
         save_settings_to_disk(&settings);
@@ -1116,6 +1109,7 @@ pub fn run() {
             // so subsequent connections skip the SPP probe and go straight to the right method.
             {
                 let tracker_ref = Arc::clone(&tracker);
+                let notify_handle = handle.clone();
                 *tracker.on_protocol_discovered.lock() = Some(Box::new(move |discovered: String| {
                     let dev = tracker_ref.get_device_name();
                     if dev.is_empty() { return; }
@@ -1127,6 +1121,8 @@ pub fn run() {
                             }
                         }
                     });
+                    // Emit state-changed event so the frontend loads the updated settings & layout
+                    let _ = notify_handle.emit("state-changed", ());
                 }));
             }
 
