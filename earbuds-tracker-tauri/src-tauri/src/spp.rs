@@ -310,17 +310,15 @@ fn parse_mac_str(s: &str) -> Option<u64> {
 #[cfg(target_os = "windows")]
 fn find_device_mac(device_name: &str) -> Option<u64> {
     use std::os::windows::process::CommandExt;
-    let safe_name = device_name.replace('\'', "''");
-    let script = format!(
-        r#"$dev = Get-PnpDevice -Class Bluetooth | Where-Object {{ $_.FriendlyName -like '*{safe_name}*' }} | Select-Object -First 1;
-        if ($dev -and $dev.InstanceId -match 'DEV_([0-9A-Fa-f]{{12}})') {{
+    let script = r#"$dev = Get-PnpDevice -Class Bluetooth | Where-Object { $_.FriendlyName -like ('*' + $env:DEVICE_NAME + '*') } | Select-Object -First 1;
+        if ($dev -and $dev.InstanceId -match 'DEV_([0-9A-Fa-f]{12})') {
             $Matches[1]
-        }}"#
-    );
+        }"#;
     let mut command = std::process::Command::new("powershell");
     command.creation_flags(0x08000000);
     let out = command
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .env("DEVICE_NAME", device_name)
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .output()
         .ok()?;
     let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -671,21 +669,19 @@ fn read_battery_airpods() -> Option<BatteryInfo> {
 #[cfg(target_os = "windows")]
 fn read_battery_pnp(device_name: &str) -> Option<BatteryInfo> {
     use std::os::windows::process::CommandExt;
-    let safe_name = device_name.replace('\'', "''");
-    let script = format!(
-        r#"$devs = Get-PnpDevice | Where-Object {{ $_.FriendlyName -like '*{safe_name}*' }};
-        foreach ($d in $devs) {{
-            $val = Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName "{{104EA319-6EE2-4701-BD47-8DDBF425BBE5}} 2" -ErrorAction SilentlyContinue;
-            if ($val -and $val.Data -ne $null) {{
+    let script = r#"$devs = Get-PnpDevice | Where-Object { $_.FriendlyName -like ('*' + $env:DEVICE_NAME + '*') };
+        foreach ($d in $devs) {
+            $val = Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName "{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2" -ErrorAction SilentlyContinue;
+            if ($val -and $val.Data -ne $null) {
                 $val.Data;
                 break;
-            }}
-        }}"#
-    );
+            }
+        }"#;
     let mut command = std::process::Command::new("powershell");
     command.creation_flags(0x08000000);
     let out = command
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .env("DEVICE_NAME", device_name)
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .output()
         .ok()?;
     let s = String::from_utf8_lossy(&out.stdout).trim().to_string();

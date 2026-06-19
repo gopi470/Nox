@@ -248,17 +248,16 @@ fn check_wasapi(target: &str) -> Option<bool> {
 #[cfg(target_os = "windows")]
 fn check_mmdevapi_present(target: &str) -> Option<bool> {
     use std::os::windows::process::CommandExt;
-    let cmd = format!(
-        "Get-PnpDevice | \
-         Where-Object {{ $_.InstanceId -like 'SWD\\MMDEVAPI*' -and \
-                         $_.FriendlyName -like '*{target}*' -and \
-                         $_.Present -eq $true }} | \
-         Measure-Object | Select-Object -ExpandProperty Count"
-    );
+    let script = "Get-PnpDevice | \
+         Where-Object { $_.InstanceId -like 'SWD\\MMDEVAPI*' -and \
+                         $_.FriendlyName -like ('*' + $env:TARGET_DEVICE + '*') -and \
+                         $_.Present -eq $true } | \
+         Measure-Object | Select-Object -ExpandProperty Count";
     let mut command = std::process::Command::new("powershell");
     command.creation_flags(0x08000000);
     let output = command
-        .args(["-NoProfile", "-NonInteractive", "-Command", &cmd])
+        .env("TARGET_DEVICE", target)
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .output()
         .ok()?;
     let s = String::from_utf8_lossy(&output.stdout).trim().to_string();

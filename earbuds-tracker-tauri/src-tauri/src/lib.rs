@@ -859,7 +859,9 @@ fn open_url(url: String) {
         use std::os::windows::process::CommandExt;
         let mut cmd = std::process::Command::new("cmd");
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        cmd.args(["/C", "start", "", &url]).spawn().ok();
+        // Use environment variable for the URL to prevent command injection
+        cmd.env("URL_TO_OPEN", &url);
+        cmd.args(["/C", "start", "", "%URL_TO_OPEN%"]).spawn().ok();
     }
 }
 
