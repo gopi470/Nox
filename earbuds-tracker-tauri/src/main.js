@@ -72,7 +72,6 @@ const PROTOCOL_DB = [
 
 // Tauri v2 exposes invoke under window.__TAURI__.core, not window.__TAURI__ directly
 const invoke = (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) || (async (cmd, args) => {
-  console.log(`[Mock Invoke] ${cmd}`, args);
   if (cmd === 'get_battery_graph_data') {
     return [
       { label: "Jun 1 10:15", left_start: 90, left_end: 80, right_start: 92, right_end: 82, case_start: 70, case_end: 70, duration_mins: 35 },
