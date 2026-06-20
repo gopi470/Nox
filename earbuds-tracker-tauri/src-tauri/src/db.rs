@@ -920,6 +920,36 @@ pub struct SessionBreakdownRow {
     pub device_name: Option<String>,
 }
 
+pub fn get_session_by_id(id: i64) -> Option<SessionBreakdownRow> {
+    let db = conn().lock();
+    db.query_row(
+        "SELECT id, session_start, COALESCE(session_end,''), connected_secs, playback_secs,
+                bat_left_connect, bat_right_connect, bat_case_connect,
+                bat_left_disc, bat_right_disc, bat_case_disc, notes, interrupted, device_name
+         FROM sessions WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(SessionBreakdownRow {
+                id: row.get(0)?,
+                session_start: row.get(1)?,
+                session_end: row.get(2)?,
+                connected_secs: row.get(3)?,
+                playback_secs: row.get(4)?,
+                bat_left_connect:  row.get(5)?,
+                bat_right_connect: row.get(6)?,
+                bat_case_connect:  row.get(7)?,
+                bat_left_disc:     row.get(8)?,
+                bat_right_disc:    row.get(9)?,
+                bat_case_disc:     row.get(10)?,
+                notes:             row.get(11)?,
+                interrupted:       row.get(12)?,
+                device_name:       row.get(13)?,
+            })
+        },
+    )
+    .ok()
+}
+
 pub fn get_sessions_for_breakdown(device_name: Option<&str>, limit: usize) -> Vec<SessionBreakdownRow> {
     let db = conn().lock();
     if let Some(dev) = device_name {
@@ -992,8 +1022,7 @@ pub struct SessionBreakdown {
 }
 
 pub fn get_session_breakdown(session_id: i64) -> Option<SessionBreakdown> {
-    let sessions = get_sessions_for_breakdown(None, 1000);
-    let session = sessions.into_iter().find(|s| s.id == session_id)?;
+    let session = get_session_by_id(session_id)?;
     let app_events = get_app_events_for_session(session_id);
     let app_totals = get_app_totals_for_session(session_id);
     Some(SessionBreakdown { session, app_events, app_totals })
