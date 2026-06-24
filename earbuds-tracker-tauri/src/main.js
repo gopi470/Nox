@@ -1979,8 +1979,12 @@ if (notificationsEnabled && Notification.permission === 'default') {
 function navigateToPage(page) {
   const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
   if (navItem) {
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    const currentNavItem = document.querySelector('.nav-item.active');
+    if (currentNavItem) currentNavItem.classList.remove('active');
+
+    const currentPage = document.querySelector('.page.active');
+    if (currentPage) currentPage.classList.remove('active');
+
     navItem.classList.add('active');
     document.getElementById(`page-${page}`).classList.add('active');
     if (page === 'history') loadHistory();
