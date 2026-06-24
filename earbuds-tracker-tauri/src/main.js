@@ -5740,34 +5740,34 @@ function renderProtocolDb() {
       margin-bottom: 14px;
     ">
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
-        <span style="font-size:15px; font-weight:700; color:#e2e8f0;">${entry.brand}</span>
-        <span style="font-size:11px; padding:2px 9px; border-radius:99px; ${badgeStyles[entry.statusClass]}">${entry.status}</span>
-        <span style="font-size:11px; color:#64748b; margin-left:auto;">${entry.transport}</span>
+        <span style="font-size:15px; font-weight:700; color:#e2e8f0;">${escapeHtml(entry.brand)}</span>
+        <span style="font-size:11px; padding:2px 9px; border-radius:99px; ${badgeStyles[entry.statusClass]}">${escapeHtml(entry.status)}</span>
+        <span style="font-size:11px; color:#64748b; margin-left:auto;">${escapeHtml(entry.transport)}</span>
       </div>
       <div style="font-size:12px; color:#94a3b8; margin-bottom:10px;">
-        <strong style="color:#cbd5e1;">Models:</strong> ${entry.models}
+        <strong style="color:#cbd5e1;">Models:</strong> ${escapeHtml(entry.models)}
       </div>
       <div style="background:rgba(0,0,0,0.25); border-radius:7px; padding:12px; margin-bottom:10px; overflow-x:auto;">
         <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
           <tr>
             <td style="color:#64748b; padding:3px 8px 3px 0; white-space:nowrap; vertical-align:top; width:130px;">Service UUID</td>
-            <td style="color:#a5b4fc; font-family:monospace; word-break:break-all;">${entry.uuid}</td>
+            <td style="color:#a5b4fc; font-family:monospace; word-break:break-all;">${escapeHtml(entry.uuid)}</td>
           </tr>
           <tr>
             <td style="color:#64748b; padding:3px 8px 3px 0; white-space:nowrap; vertical-align:top;">Request Bytes</td>
-            <td style="color:#34d399; font-family:monospace; letter-spacing:1px;">${entry.request}</td>
+            <td style="color:#34d399; font-family:monospace; letter-spacing:1px;">${escapeHtml(entry.request)}</td>
           </tr>
           <tr>
             <td style="color:#64748b; padding:3px 8px 3px 0; white-space:nowrap; vertical-align:top;">Response Format</td>
-            <td style="color:#fbbf24; font-family:monospace; letter-spacing:1px; word-break:break-all;">${entry.response}</td>
+            <td style="color:#fbbf24; font-family:monospace; letter-spacing:1px; word-break:break-all;">${escapeHtml(entry.response)}</td>
           </tr>
         </table>
       </div>
       <div style="font-size:11.5px; color:#94a3b8; margin-bottom:6px;">
-        <strong style="color:#cbd5e1;">Notes:</strong> ${entry.notes}
+        <strong style="color:#cbd5e1;">Notes:</strong> ${escapeHtml(entry.notes)}
       </div>
       <div style="font-size:11px; color:#475569;">
-        <strong style="color:#64748b;">Source:</strong> ${entry.source}
+        <strong style="color:#64748b;">Source:</strong> ${escapeHtml(entry.source)}
       </div>
     </div>
   `).join('');
