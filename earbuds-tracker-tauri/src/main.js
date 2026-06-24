@@ -1,4 +1,4 @@
-import { computeStreak } from './utils.js';
+import { computeStreak, formatBatteryAgo } from './utils.js';
 // main.js – Nox frontend logic
 
 // ─── Protocol Database ─────────────────────────────────────────────────────
@@ -3485,31 +3485,6 @@ function drawDailyChart(history, weekOffset = 0) {
   };
 }
 
-function formatBatteryAgo(ms) {
-  if (!ms) return '0 sec ago';
-
-  const seconds = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-  const interval = Math.max(1, batteryPollIntervalSec || 10);
-  const stepSeconds = seconds < 60 ? Math.floor(seconds / interval) * interval : Math.floor(seconds / 60) * 60;
-
-  if (stepSeconds < 60) {
-    return `${stepSeconds} sec${stepSeconds === 1 ? '' : 's'} ago`;
-  }
-
-  const minutes = Math.floor(stepSeconds / 60);
-  if (minutes < 60) {
-    return `${minutes} min${minutes === 1 ? '' : 's'} ago`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours} hr${hours === 1 ? '' : 's'} ${minutes % 60} min ago`;
-  }
-
-  const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? '' : 's'} ago`;
-}
-
 function updateBatteryFreshnessLabel() {
   const badge = document.getElementById('bat-last-updated');
   if (!badge) return;
@@ -3520,7 +3495,7 @@ function updateBatteryFreshnessLabel() {
   }
 
   badge.style.display = 'inline-flex';
-  badge.textContent = `Battery Last Updated ${formatBatteryAgo(lastBatteryUpdateAt)}`;
+  badge.textContent = `Battery Last Updated ${formatBatteryAgo(lastBatteryUpdateAt, Date.now(), batteryPollIntervalSec)}`;
 }
 
 function updateBatteryUI(batteryInfo) {
@@ -3865,6 +3840,7 @@ event.listen('state-changed', async () => {
 
 // ── Polling timer (1 s) as safety net ────────────────────────────────────────
 setInterval(refreshSnapshot, 1000);
+setInterval(updateBatteryFreshnessLabel, 10000);
 
 // ── Initial draw ──────────────────────────────────────────────────────────────
 drawRing(0, 0, false, false, false);
