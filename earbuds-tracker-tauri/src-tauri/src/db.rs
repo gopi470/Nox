@@ -1327,4 +1327,49 @@ mod tests {
         assert_eq!(history[0].connected_secs, 6.0);
         assert_eq!(history[1].connected_secs, 1.0);
     }
+
+    #[test]
+    fn test_get_profile_db_path_logic() {
+        let _lock = setup_db();
+
+        let cases = vec![
+            ("My Buds", "query_log_My_Buds.db"),
+            ("", "query_log_default.db"),
+            ("   ", "query_log_default.db"),
+            ("Buds! @123", "query_log_Buds___123.db"),
+            ("Buds_123-Pro", "query_log_Buds_123-Pro.db"),
+        ];
+
+        for (input, expected_filename) in cases {
+            let path = get_profile_db_path(input);
+            assert_eq!(
+                path.file_name().unwrap().to_str().unwrap(),
+                expected_filename,
+                "Failed for input: '{}'", input
+            );
+            assert!(path.parent().unwrap().ends_with("EarbudsTracker"));
+        }
+    }
+
+    #[test]
+    fn test_get_profile_db_path_respects_appdata() {
+        let _lock = setup_db();
+        let original_appdata = std::env::var("APPDATA");
+
+        let mock_val = if cfg!(windows) { "C:\\MockAppData" } else { "/tmp/mock_appdata" };
+        std::env::set_var("APPDATA", mock_val);
+
+        let path = get_profile_db_path("EnvTest");
+
+        // Restore environment immediately
+        match original_appdata {
+            Ok(v) => std::env::set_var("APPDATA", v),
+            Err(_) => std::env::remove_var("APPDATA"),
+        }
+
+        let path_str = path.to_string_lossy();
+        assert!(path_str.contains(mock_val));
+        assert!(path_str.contains("EarbudsTracker"));
+        assert!(path_str.contains("query_log_EnvTest.db"));
+    }
 }
