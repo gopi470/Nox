@@ -105,4 +105,60 @@ describe('computeStreak', () => {
     const result = computeStreak(history, goalHrs, null, now);
     expect(result.streak).toBe(1);
   });
+
+  test('handles goal of 0 hours', () => {
+    // If goal is 0, we return 0 streak to avoid complexity/infinite loops
+    const result = computeStreak([], 0, 1, now);
+    expect(result.streak).toBe(0);
+  });
+
+  test('negative todayPlaybackSecs treated as 0', () => {
+    const result = computeStreak([], goalHrs, -500, now);
+    expect(result.streak).toBe(0);
+  });
+
+  test('NaN todayPlaybackSecs treated as 0', () => {
+    const result = computeStreak([], goalHrs, NaN, now);
+    expect(result.streak).toBe(0);
+  });
+
+  test('Infinity todayPlaybackSecs handled', () => {
+    const result = computeStreak([], goalHrs, Infinity, now);
+    expect(result.streak).toBe(1);
+  });
+
+  test('history with null playback_secs treated as 0', () => {
+    const history = [{ day: '2023-10-09', playback_secs: null }];
+    const result = computeStreak(history, goalHrs, goalSecs, now);
+    expect(result.streak).toBe(1); // Today is 1, yesterday is 0
+  });
+
+  test('duplicate days in history - last one wins (Map behavior)', () => {
+    const history = [
+      { day: '2023-10-09', playback_secs: 0 },
+      { day: '2023-10-09', playback_secs: goalSecs }
+    ];
+    const result = computeStreak(history, goalHrs, goalSecs, now);
+    expect(result.streak).toBe(2);
+  });
+
+  test('streak across month boundary', () => {
+    const oct1 = new Date('2023-10-01T12:00:00');
+    const history = [
+      { day: '2023-09-30', playback_secs: goalSecs },
+      { day: '2023-09-29', playback_secs: goalSecs }
+    ];
+    const result = computeStreak(history, goalHrs, goalSecs, oct1);
+    expect(result.streak).toBe(3);
+  });
+
+  test('streak across year boundary', () => {
+    const jan1 = new Date('2024-01-01T12:00:00');
+    const history = [
+      { day: '2023-12-31', playback_secs: goalSecs },
+      { day: '2023-12-30', playback_secs: goalSecs }
+    ];
+    const result = computeStreak(history, goalHrs, goalSecs, jan1);
+    expect(result.streak).toBe(3);
+  });
 });
