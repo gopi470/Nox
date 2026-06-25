@@ -278,11 +278,6 @@ fn get_active_app_peaks_internal(target_device: Option<&str>) -> Vec<String> {
     result
 }
 
-#[cfg(not(target_os = "windows"))]
-pub fn get_active_app_peaks(_target_device: &str) -> Vec<String> {
-    vec![]
-}
-
 // ── All-endpoints variant (used by Dashboard Now Playing) ────────────────────
 // Same as get_active_app_peaks but scans ALL active render endpoints, not just
 // the one matching the target device name. This is more reliable for the UI
@@ -292,11 +287,6 @@ pub fn get_active_app_peaks(_target_device: &str) -> Vec<String> {
 pub fn get_all_app_peaks() -> Vec<String> {
     // Reuse the same logic but pass an empty target so the device filter always matches
     get_active_app_peaks_internal(None)
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn get_all_app_peaks() -> Vec<String> {
-    vec![]
 }
 
 #[cfg(target_os = "windows")]
@@ -420,11 +410,6 @@ pub fn get_active_capture_processes() -> Vec<String> {
     }
 
     result
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn get_active_capture_processes() -> Vec<String> {
-    vec![]
 }
 
 #[cfg(target_os = "windows")]
@@ -610,7 +595,23 @@ pub fn mute_all_render_endpoints() {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn mute_all_render_endpoints() {}
+mod stubs {
+    pub fn get_active_app_peaks(_target_device: &str) -> Vec<String> {
+        vec![]
+    }
+
+    pub fn get_all_app_peaks() -> Vec<String> {
+        vec![]
+    }
+
+    pub fn get_active_capture_processes() -> Vec<String> {
+        vec![]
+    }
+
+    pub fn mute_all_render_endpoints() {}
+
+    pub fn perform_autopause() {}
+}
 
 #[cfg(not(target_os = "windows"))]
-pub fn perform_autopause() {}
+pub use stubs::*;
