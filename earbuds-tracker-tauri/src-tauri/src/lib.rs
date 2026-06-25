@@ -853,14 +853,9 @@ fn get_app_version() -> String {
 }
 
 #[tauri::command]
-fn open_url(url: String) {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        let mut cmd = std::process::Command::new("cmd");
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        cmd.args(["/C", "start", "", &url]).spawn().ok();
-    }
+fn open_url(app: AppHandle, url: String) {
+    use tauri_plugin_shell::ShellExt;
+    app.shell().open(url, None).ok();
 }
 
 // ── Auto Backup commands ──────────────────────────────────────────────────────
