@@ -12,6 +12,9 @@ export function computeStreak(history, goalHrs, todayPlaybackSecs = null, now = 
   }
 
   const goalSecs = goalHrs * 3600;
+  if (goalSecs <= 0) {
+    return { streak: 0, show: false };
+  }
   const playbackMap = new Map();
   if (history) {
     history.forEach(row => {
@@ -33,7 +36,7 @@ export function computeStreak(history, goalHrs, todayPlaybackSecs = null, now = 
   const todayStr = getLocalDateString(today);
   const yesterdayStr = getLocalDateString(yesterday);
 
-  if (todayPlaybackSecs != null && Number.isFinite(todayPlaybackSecs)) {
+  if (todayPlaybackSecs != null && !Number.isNaN(todayPlaybackSecs)) {
     playbackMap.set(todayStr, Math.max(playbackMap.get(todayStr) || 0, todayPlaybackSecs));
   }
 
