@@ -745,6 +745,20 @@ fn save_device_profile(profile: DeviceProfile, state: tauri::State<'_, TrackerSt
     Ok(())
 }
 
+fn find_unused_name(base_name: &str, existing_names: &std::collections::HashSet<&str>) -> String {
+    if !existing_names.contains(base_name) {
+        return base_name.to_string();
+    }
+    let mut n = 2u32;
+    loop {
+        let candidate = format!("{} ({})", base_name, n);
+        if !existing_names.contains(candidate.as_str()) {
+            break candidate;
+        }
+        n += 1;
+    }
+}
+
 /// Creates a brand-new profile. If a profile with the same `friendly_name` already exists
 /// (e.g. two physical "CMF Buds 2a" devices), the name is auto-suffixed to "(2)", "(3)", etc.
 /// Returns the actual name under which the profile was saved.
@@ -758,19 +772,7 @@ fn create_device_profile(profile: DeviceProfile, _state: tauri::State<'_, Tracke
         let existing_names: std::collections::HashSet<&str> =
             s.device_profiles.iter().map(|p| p.friendly_name.as_str()).collect();
 
-        // Find an unused name: try base_name, then base_name (2), (3), ...
-        let candidate = if !existing_names.contains(base_name.as_str()) {
-            base_name.clone()
-        } else {
-            let mut n = 2u32;
-            loop {
-                let candidate = format!("{} ({})", base_name, n);
-                if !existing_names.contains(candidate.as_str()) {
-                    break candidate;
-                }
-                n += 1;
-            }
-        };
+        let candidate = find_unused_name(&base_name, &existing_names);
 
         final_name = candidate.clone();
         let mut new_profile = profile.clone();
@@ -1289,4 +1291,23 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_find_unused_name() {
+        let mut existing = HashSet::new();
+        existing.insert("Buds");
+        existing.insert("Buds (2)");
+
+        assert_eq!(find_unused_name("New", &existing), "New");
+        assert_eq!(find_unused_name("Buds", &existing), "Buds (3)");
+
+        existing.insert("Buds (3)");
+        assert_eq!(find_unused_name("Buds", &existing), "Buds (4)");
+    }
 }
