@@ -1,8 +1,37 @@
 import { computeStreak } from './utils.js';
 // main.js – Nox frontend logic
 
+// ─── Battery card device renders ───────────────────────────────────────────
+// Per-brand left/case/right images shown on the battery card. Brands not
+// listed here fall back to the default (Nothing/CMF) renders.
+const DEVICE_IMAGES = {
+  oppo: {
+    left: 'assets/oppo_left.png',
+    case: 'assets/oppo_case.png',
+    right: 'assets/oppo_right.png',
+  },
+};
+const DEFAULT_DEVICE_IMAGES = {
+  left: 'assets/donphan_black_left.webp',
+  case: 'assets/donphan_black_case.webp',
+  right: 'assets/donphan_black_right.webp',
+};
+
 // ─── Protocol Database ─────────────────────────────────────────────────────
 const PROTOCOL_DB = [
+  {
+    key: 'oppo',
+    brand: 'OPPO / OnePlus / realme',
+    models: 'OPPO Enco, OnePlus Buds, realme Buds (supported models)',
+    transport: 'SPP / RFCOMM',
+    uuid: '0000079A-D102-11E1-9B23-00025B00A5A5',
+    status: 'Implemented ✓',
+    statusClass: 'badge-implemented',
+    request: 'AA 07 00 00 06 01 F0 00 00',
+    response: 'AA <len> 00 00 06 81 <seq> 08 00 00 04 <L%> <L chg> <R%> <R chg> <C%> <C chg>',
+    notes: 'Shared OPPO/OnePlus/realme RFCOMM protocol. Battery response contains left, right, and case percentage/charging pairs; 0xFF means unavailable.',
+    source: 'OppoPodsManager reference implementation',
+  },
   {
     key: 'nothing_cmf',
     brand: 'Nothing / CMF',
@@ -824,12 +853,20 @@ async function loadDeviceProfiles() {
 
 function updateBatteryCardLayout() {
   const isUnified = activeProfile && (activeProfile.protocol_mode === 'standard' || activeProfile.brand === 'generic_other');
-  
+
   const leftCol = document.getElementById('bat-left-container');
   const caseCol = document.getElementById('bat-case-container');
   const rightCol = document.getElementById('bat-right-container');
   const univCol = document.getElementById('bat-universal-container');
-  
+
+  const images = DEVICE_IMAGES[activeProfile?.brand] || DEFAULT_DEVICE_IMAGES;
+  const leftImg = document.getElementById('bat-left-img');
+  const caseImg = document.getElementById('bat-case-img');
+  const rightImg = document.getElementById('bat-right-img');
+  if (leftImg) leftImg.src = images.left;
+  if (caseImg) caseImg.src = images.case;
+  if (rightImg) rightImg.src = images.right;
+
   if (isUnified) {
     if (leftCol) leftCol.style.display = 'none';
     if (caseCol) caseCol.style.display = 'none';

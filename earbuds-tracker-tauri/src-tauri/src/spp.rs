@@ -65,6 +65,33 @@ fn build_battery_request() -> Vec<u8> {
     frame
 }
 
+// ── OPPO / OnePlus / realme SPP protocol ───────────────────────────────────
+// Frame: [AA, total_len, 00, 00, cmd_lo, cmd_hi, transaction_id,
+// payload_len_lo, payload_len_hi, payload...]. No checksum is used.
+const OPPO_SPP_UUID: &str = "0000079a-d102-11e1-9b23-00025b00a5a5";
+const OPPO_BATTERY_QUERY: u16 = 0x0106;
+const OPPO_BATTERY_RESPONSE: u16 = 0x8106;
+
+fn build_oppo_request(command: u16) -> Vec<u8> {
+    let cmd = command.to_le_bytes();
+    vec![0xAA, 0x07, 0x00, 0x00, cmd[0], cmd[1], 0xF0, 0x00, 0x00]
+}
+
+fn build_oppo_battery_request() -> Vec<u8> {
+    build_oppo_request(OPPO_BATTERY_QUERY)
+}
+
+/// OPPO devices expect identification and capability negotiation before their
+/// first battery query. This matches the connection sequence used by the
+/// official companion protocol.
+fn oppo_initialization_packets() -> Vec<Vec<u8>> {
+    vec![
+        build_oppo_request(0x0103), // product ID
+        build_oppo_request(0x0100), // capabilities
+        build_oppo_battery_request(),
+    ]
+}
+
 // ── Response parser ──────────────────────────────────────────────────────────
 // The device sends an ACK packet first, then the actual battery data packet.
 // We scan through accumulated bytes looking for a battery frame.
@@ -254,12 +281,97 @@ fn try_parse_bose(buf: &[u8]) -> Option<BatteryInfo> {
     None
 }
 
+/// Parses OPPO frames from an arbitrary RFCOMM stream buffer. Battery payload:
+/// `[status=0, kind=4, L%, L_charging, R%, R_charging, C%, C_charging]`.
+fn try_parse_oppo(buf: &[u8]) -> Option<BatteryInfo> {
+    let mut i = 0;
+    while i < buf.len() {
+        if buf[i] != 0xAA {
+            i += 1;
+            continue;
+        }
+        if buf.len() - i < 9 {
+            break;
+        }
+
+        let total_len = buf[i + 1] as usize;
+        let frame_len = total_len + 2;
+        if total_len < 7 {
+            i += 1;
+            continue;
+        }
+        if buf.len() - i < frame_len {
+            break;
+        }
+
+        let frame = &buf[i..i + frame_len];
+        let cmd = u16::from_le_bytes([frame[4], frame[5]]);
+        let payload_len = u16::from_le_bytes([frame[7], frame[8]]) as usize;
+        if payload_len > frame.len().saturating_sub(9) {
+            i += 1;
+            continue;
+        }
+        if cmd != OPPO_BATTERY_RESPONSE {
+            i += frame_len;
+            continue;
+        }
+
+        let payload = &frame[9..9 + payload_len];
+        if payload.is_empty() || payload[0] != 0 {
+            i += frame_len;
+            continue;
+        }
+
+        let level = |value: u8| (value <= 100).then_some(value);
+        // Older SPP devices: [status, 4, L%, L_charging, R%, R_charging,
+        // C%, C_charging].
+        if payload.len() >= 8 && payload[1] == 4 {
+            return Some(BatteryInfo {
+                left: level(payload[2]),
+                left_charging: payload[3] != 0,
+                right: level(payload[4]),
+                right_charging: payload[5] != 0,
+                case: level(payload[6]),
+                case_charging: payload[7] != 0,
+                updated_at: Some(chrono::Local::now().timestamp_millis() as u64),
+            });
+        }
+
+        // Melody list format used by Enco Air3 Pro: [status, count,
+        // component_id, level|charging_bit] × count. IDs: 1=left, 2=right,
+        // 3=case.
+        let count = payload.get(1).copied().unwrap_or_default() as usize;
+        if payload.len() < 2 + count * 2 {
+            i += frame_len;
+            continue;
+        }
+        let mut info = BatteryInfo::default();
+        for pair in payload[2..2 + count * 2].chunks_exact(2) {
+            let raw_level = level(pair[1] & 0x7F);
+            let charging = (pair[1] & 0x80) != 0;
+            match pair[0] {
+                1 => { info.left = raw_level; info.left_charging = raw_level.is_some() && charging; }
+                2 => { info.right = raw_level; info.right_charging = raw_level.is_some() && charging; }
+                3 => { info.case = raw_level; info.case_charging = raw_level.is_some() && charging; }
+                _ => {}
+            }
+        }
+        if info.left.is_some() || info.right.is_some() || info.case.is_some() {
+            info.updated_at = Some(chrono::Local::now().timestamp_millis() as u64);
+            return Some(info);
+        }
+        i += frame_len;
+    }
+    None
+}
+
 fn parse_spp_response(brand: &str, buf: &[u8]) -> Option<BatteryInfo> {
     match brand {
         "nothing_cmf" => try_parse_nothing_cmf(buf),
         "samsung_galaxy" => try_parse_samsung_galaxy(buf),
         "sony" => try_parse_sony(buf),
         "bose" => try_parse_bose(buf),
+        "oppo" => try_parse_oppo(buf),
         _ => None,
     }
 }
@@ -290,6 +402,7 @@ fn get_brand_spp_config(brand: &str) -> Option<(&'static str, Vec<u8>)> {
                 vec![0x01, 0x09, 0x02, 0x00]
             ))
         }
+        "oppo" => Some((OPPO_SPP_UUID, build_oppo_battery_request())),
         _ => None,
     }
 }
@@ -342,7 +455,7 @@ fn find_device_mac(_device_name: &str) -> Option<u64> { None }
 #[cfg(target_os = "windows")]
 fn attempt_spp_query(mac: u64, device_name: &str, brand: &str) -> Option<BatteryInfo> {
     use windows::{
-        Devices::Bluetooth::BluetoothDevice,
+        Devices::Bluetooth::{BluetoothCacheMode, BluetoothDevice},
         Devices::Bluetooth::Rfcomm::RfcommServiceId,
         Networking::Sockets::StreamSocket,
         Storage::Streams::{DataReader, DataWriter, InputStreamOptions},
@@ -377,7 +490,12 @@ fn attempt_spp_query(mac: u64, device_name: &str, brand: &str) -> Option<Battery
         Err(e) => { warn!("SPP: RfcommServiceId failed for {uuid_str}: {e}"); return None; }
     };
 
-    let result = match bt_device.GetRfcommServicesForIdAsync(&svc_id)
+    // OPPO's service can appear only after the earbuds connect. Avoid a stale
+    // Windows SDP cache, which otherwise makes us fall back to standard GATT.
+    let result = match bt_device.GetRfcommServicesForIdWithCacheModeAsync(
+        &svc_id,
+        BluetoothCacheMode::Uncached,
+    )
         .and_then(|op| op.get())
     {
         Ok(r) => r,
@@ -436,17 +554,27 @@ fn attempt_spp_query(mac: u64, device_name: &str, brand: &str) -> Option<Battery
         Err(e) => { warn!("SPP: DataWriter failed: {e}"); return None; }
     };
 
-    if let Err(e) = writer.WriteBytes(&packet) {
-        warn!("SPP: WriteBytes failed: {e}");
-        return None;
-    }
-    if let Err(e) = writer.StoreAsync().and_then(|op| op.get()) {
-        warn!("SPP: StoreAsync failed: {e}");
-        return None;
+    let packets = if brand == "oppo" {
+        oppo_initialization_packets()
+    } else {
+        vec![packet]
+    };
+    for (index, outgoing) in packets.iter().enumerate() {
+        if let Err(e) = writer.WriteBytes(outgoing) {
+            warn!("SPP: WriteBytes failed: {e}");
+            return None;
+        }
+        if let Err(e) = writer.StoreAsync().and_then(|op| op.get()) {
+            warn!("SPP: StoreAsync failed: {e}");
+            return None;
+        }
+        if brand == "oppo" && index + 1 < packets.len() {
+            std::thread::sleep(std::time::Duration::from_millis(120));
+        }
     }
     let _ = writer.DetachStream();
 
-    info!("SPP: sent battery request {:02X?} for {brand}", packet);
+    info!("SPP: sent {} SPP packet(s) for {brand}", packets.len());
 
     // Read response — collect for up to 3 seconds
     let input_stream = match socket.InputStream() {
@@ -769,5 +897,75 @@ pub fn read_battery(
     _is_connected: bool,
 ) -> (Option<BatteryInfo>, &'static str) {
     (None, "standard")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builds_oppo_battery_request() {
+        assert_eq!(
+            build_oppo_battery_request(),
+            vec![0xAA, 0x07, 0x00, 0x00, 0x06, 0x01, 0xF0, 0x00, 0x00]
+        );
+    }
+
+    #[test]
+    fn initializes_oppo_before_requesting_battery() {
+        let packets = oppo_initialization_packets();
+        assert_eq!(packets.len(), 3);
+        assert_eq!(packets[0], build_oppo_request(0x0103));
+        assert_eq!(packets[1], build_oppo_request(0x0100));
+        assert_eq!(packets[2], build_oppo_battery_request());
+    }
+
+    #[test]
+    fn parses_oppo_battery_response_after_unrelated_data() {
+        let response = [
+            0x12, 0x34, // unrelated stream data
+            0xAA, 0x0F, 0x00, 0x00, 0x06, 0x81, 0xF0, 0x08, 0x00,
+            0x00, 0x04, 85, 0x01, 72, 0x00, 0xFF, 0x00,
+        ];
+
+        let battery = try_parse_oppo(&response).expect("valid OPPO battery response");
+        assert_eq!(battery.left, Some(85));
+        assert!(battery.left_charging);
+        assert_eq!(battery.right, Some(72));
+        assert!(!battery.right_charging);
+        assert_eq!(battery.case, None);
+        assert!(!battery.case_charging);
+    }
+
+    #[test]
+    fn parses_oppo_melody_battery_list_response() {
+        // Captured from an OPPO Enco Air3 Pro by oppo_spp_probe.
+        let response = [
+            0xAA, 0x0F, 0x00, 0x00, 0x06, 0x81, 0xF0, 0x08, 0x00,
+            0x00, 0x03, 0x01, 0x5A, 0x02, 0x50, 0x03, 0xE4,
+        ];
+        let battery = try_parse_oppo(&response).expect("valid OPPO Melody battery response");
+        assert_eq!(battery.left, Some(90));
+        assert!(!battery.left_charging);
+        assert_eq!(battery.right, Some(80));
+        assert!(!battery.right_charging);
+        assert_eq!(battery.case, Some(100));
+        assert!(battery.case_charging);
+    }
+
+    #[test]
+    fn parses_oppo_melody_battery_list_with_unavailable_component() {
+        // 0xFF marks a component as unavailable; masking with 0x7F alone would
+        // wrongly read this as 127% (and "charging", since bit 7 is set).
+        let response = [
+            0xAA, 0x0D, 0x00, 0x00, 0x06, 0x81, 0xF0, 0x06, 0x00,
+            0x00, 0x02, 0x01, 0xFF, 0x03, 0x50,
+        ];
+        let battery = try_parse_oppo(&response).expect("valid OPPO Melody battery response");
+        assert_eq!(battery.left, None);
+        assert!(!battery.left_charging);
+        assert_eq!(battery.case, Some(80));
+        assert!(!battery.case_charging);
+    }
 }
 
